@@ -28,10 +28,8 @@ Defense in Depth (7 layers):
 """
 
 import os
-import sqlite3
 from langgraph.graph import StateGraph, END
 from langgraph.checkpoint.memory import MemorySaver
-from langgraph.checkpoint.sqlite import SqliteSaver
 
 from graph.state import AgentState
 from graph.nodes.rbac_guard import rbac_guard_node
@@ -159,13 +157,27 @@ def build_secure_graph():
     # ── Audit → END ──
     graph.add_edge("audit_log", END)
 
-    checkpoint_backend = os.getenv("CHECKPOINT_BACKEND", "sqlite")
-
-    if checkpoint_backend == "memory":
-        checkpointer = MemorySaver()
-    else:
-        db_path = os.getenv("CHECKPOINT_DB", "checkpoints.db")
-        conn = sqlite3.connect(db_path, check_same_thread=False)
-        checkpointer = SqliteSaver(conn)
-
+    checkpointer = _make_checkpointer()
     return graph.compile(checkpointer=checkpointer)
+
+
+def _make_checkpointer():
+    """Use PostgresSaver when DATABASE_URL is set, else fall back to MemorySaver."""
+    db_url = os.getenv("DATABASE_URL", "")
+    if not db_url:
+        return MemorySaver()
+
+    # Normalize URL for psycopg (psycopg3 uses plain postgresql://)
+    conn_url = db_url
+    for prefix in ("postgresql+psycopg2://", "postgresql+psycopg://"):
+        if conn_url.startswith(prefix):
+            conn_url = conn_url.replace(prefix, "postgresql://", 1)
+            break
+
+    import psycopg
+    from langgraph.checkpoint.postgres import PostgresSaver
+
+    conn = psycopg.connect(conn_url)
+    saver = PostgresSaver(conn)
+    saver.setup()
+    return saver

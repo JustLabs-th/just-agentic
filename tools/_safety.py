@@ -1,8 +1,7 @@
 """Shared safety helpers: path allowlist, command blocklist, tool logging."""
 
-import os
-import time
 import json
+from contextvars import ContextVar
 from pathlib import Path
 
 # Paths that tools are NOT allowed to read/write
@@ -22,7 +21,15 @@ _BLOCKED_COMMAND_PATTERNS = [
     ":(){:|:&};:",  # fork bomb
 ]
 
-_LOG_FILE = os.path.join(os.path.dirname(__file__), "..", "tool_calls.log")
+# Context vars — set by agent nodes before tool execution
+_user_id_ctx:   ContextVar[str] = ContextVar("tool_user_id",  default="")
+_thread_id_ctx: ContextVar[str] = ContextVar("tool_thread_id", default="")
+
+
+def set_tool_context(user_id: str, thread_id: str = "") -> None:
+    """Call in agent nodes alongside set_role_context, before create_react_agent."""
+    _user_id_ctx.set(user_id)
+    _thread_id_ctx.set(thread_id)
 
 
 def check_path(path: str) -> str | None:
@@ -44,15 +51,18 @@ def check_command(command: str) -> str | None:
 
 
 def log_tool_call(tool_name: str, inputs: dict, output: str) -> None:
-    """Append a tool call record to tool_calls.log."""
-    record = {
-        "ts": time.strftime("%Y-%m-%dT%H:%M:%S"),
-        "tool": tool_name,
-        "inputs": inputs,
-        "output_snippet": output[:200],
-    }
+    """Append a tool call record to the tool_call_logs table."""
     try:
-        with open(_LOG_FILE, "a", encoding="utf-8") as f:
-            f.write(json.dumps(record) + "\n")
+        from db.session import get_db
+        from db.models import ToolCallLog
+
+        with get_db() as db:
+            db.add(ToolCallLog(
+                thread_id=_thread_id_ctx.get() or None,
+                user_id=_user_id_ctx.get() or None,
+                tool_name=tool_name,
+                inputs_json=json.dumps(inputs, default=str),
+                output_snippet=output[:500],
+            ))
     except Exception:
         pass  # logging failure must never crash the tool

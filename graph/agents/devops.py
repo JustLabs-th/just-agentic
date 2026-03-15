@@ -6,6 +6,7 @@ from llm.adapter import get_adapter
 from graph.agents._utils import extract_tools_called, build_prompt_with_tools
 from graph.state import AgentState
 from tools import ALL_TOOLS, set_role_context
+from tools._safety import set_tool_context
 
 
 def devops_node(state: AgentState) -> AgentState:
@@ -22,6 +23,7 @@ def devops_node(state: AgentState) -> AgentState:
         state.get("user_department", "all"),
         state.get("clearance_level", 0),
     )
+    set_tool_context(state.get("user_id", ""))
 
     agent = create_react_agent(
         get_adapter().chat_model(),
