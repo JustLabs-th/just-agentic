@@ -3,12 +3,25 @@
 from db.models import ClearanceLevel, Role, Department
 from db.session import get_db
 
-_READ_TOOLS = [
+# ── Tool sets ──────────────────────────────────────────────────────────────────
+
+_READ_TOOLS: list[str] = [
     "read_file", "list_files", "search_code", "read_log",
     "git_status", "get_env", "web_search",
 ]
-_ANALYZE_TOOLS = _READ_TOOLS + ["run_shell", "execute_python", "run_tests"]
-_WRITE_TOOLS   = _ANALYZE_TOOLS + ["write_file"]
+
+# analyst adds reconnaissance + reporting tools
+_ANALYST_TOOLS: list[str] = _READ_TOOLS + ["scan_secrets", "scrape_page"]
+
+# manager adds execution + DB inspection
+_ANALYZE_TOOLS: list[str] = _ANALYST_TOOLS + [
+    "run_shell", "execute_python", "run_tests", "query_db",
+]
+
+# admin adds file write
+_WRITE_TOOLS: list[str] = _ANALYZE_TOOLS + ["write_file"]
+
+# ── Default seed data ──────────────────────────────────────────────────────────
 
 _DEFAULT_CLEARANCE_LEVELS = [
     {"name": "PUBLIC",       "level_order": 1},
@@ -19,7 +32,7 @@ _DEFAULT_CLEARANCE_LEVELS = [
 
 _DEFAULT_ROLES = [
     {"name": "viewer",  "clearance_ceiling": "PUBLIC",       "allowed_tools": ["read_file", "list_files", "web_search"]},
-    {"name": "analyst", "clearance_ceiling": "INTERNAL",     "allowed_tools": _READ_TOOLS},
+    {"name": "analyst", "clearance_ceiling": "INTERNAL",     "allowed_tools": _ANALYST_TOOLS},
     {"name": "manager", "clearance_ceiling": "CONFIDENTIAL", "allowed_tools": _ANALYZE_TOOLS},
     {"name": "admin",   "clearance_ceiling": "SECRET",       "allowed_tools": _WRITE_TOOLS},
 ]
@@ -27,23 +40,34 @@ _DEFAULT_ROLES = [
 _DEFAULT_DEPARTMENTS = [
     {
         "name": "engineering", "max_clearance": "CONFIDENTIAL",
-        "permitted_tools": ["read_file", "write_file", "list_files", "search_code",
-                            "run_shell", "git_status", "execute_python", "run_tests", "web_search"],
+        "permitted_tools": [
+            "read_file", "write_file", "list_files", "search_code",
+            "run_shell", "git_status", "execute_python", "run_tests",
+            "web_search", "scrape_page", "scan_secrets", "query_db",
+        ],
     },
     {
         "name": "devops", "max_clearance": "CONFIDENTIAL",
-        "permitted_tools": ["read_file", "write_file", "list_files", "read_log",
-                            "run_shell", "git_status", "get_env", "web_search"],
+        "permitted_tools": [
+            "read_file", "write_file", "list_files", "read_log",
+            "run_shell", "git_status", "get_env", "web_search",
+            "scrape_page", "query_db",
+        ],
     },
     {
         "name": "qa", "max_clearance": "INTERNAL",
-        "permitted_tools": ["read_file", "list_files", "search_code", "read_log",
-                            "run_shell", "run_tests", "execute_python", "web_search"],
+        "permitted_tools": [
+            "read_file", "list_files", "search_code", "read_log",
+            "run_shell", "run_tests", "execute_python", "web_search",
+            "scrape_page", "scan_secrets",
+        ],
     },
     {
         "name": "data", "max_clearance": "SECRET",
-        "permitted_tools": ["read_file", "list_files", "search_code", "read_log",
-                            "execute_python", "web_search"],
+        "permitted_tools": [
+            "read_file", "list_files", "search_code", "read_log",
+            "execute_python", "web_search", "scrape_page", "query_db",
+        ],
     },
     {
         "name": "security", "max_clearance": "SECRET",

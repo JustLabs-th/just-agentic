@@ -23,6 +23,10 @@ alembic>=1.13
 # LangGraph checkpoint (PostgreSQL)
 langgraph-checkpoint-postgres>=2.0
 
+# Web scraping (scrape_page tool)
+requests>=2.31
+beautifulsoup4>=4.12         # optional: cleaner HTML → text (falls back to regex)
+
 # Testing
 pytest>=7.0
 pytest-mock>=3.0
