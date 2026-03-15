@@ -131,19 +131,6 @@ def supervisor_node(state: AgentState) -> AgentState:
     return updates
 
 
-def route_after_supervisor(state: AgentState) -> str:
-    """Conditional edge: supervisor → agent | audit_log."""
-    status = state.get("status", "working")
-    if status in ("done", "error", "permission_denied"):
-        return "audit_log"
-
-    current = state.get("current_agent", "")
-    if current in VALID_AGENTS:
-        return current
-
-    return "audit_log"
-
-
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _finish(state, message, iteration, routing_history, retry_count,

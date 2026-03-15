@@ -7,11 +7,11 @@ Node 5: Audit Log
 
 from langchain_core.messages import AIMessage
 
-from graph.secure_state import SecureAgentState
+from graph.state import AgentState
 from security.audit import logger as audit_logger
 
 
-def _extract_final_response(state: SecureAgentState) -> str:
+def _extract_final_response(state: AgentState) -> str:
     messages = state.get("messages", [])
     for msg in reversed(messages):
         if isinstance(msg, AIMessage) and msg.content:
@@ -26,7 +26,7 @@ def _extract_final_response(state: SecureAgentState) -> str:
     return ""
 
 
-def audit_log_node(state: SecureAgentState) -> SecureAgentState:
+def audit_log_node(state: AgentState) -> AgentState:
     final_response = _extract_final_response(state)
 
     try:
@@ -55,6 +55,6 @@ def audit_log_node(state: SecureAgentState) -> SecureAgentState:
 
     return {
         **state,
-        "final_response": final_response,
+        "final_answer": final_response,
         "audit_trail": audit_trail,
     }
