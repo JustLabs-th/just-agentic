@@ -19,6 +19,10 @@ env/
 *.jsonl
 *.log
 
+# Claude local overrides
+.claude/settings.local.json
+CLAUDE.local.md
+
 # IDE
 .vscode/
 .idea/
