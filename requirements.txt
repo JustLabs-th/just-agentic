@@ -12,12 +12,26 @@ PyJWT>=2.0
 # Ollama
 # langchain-community>=0.2
 
-# Checkpoint
-langgraph-checkpoint-sqlite>=2.0
+# Database (PostgreSQL — required)
+sqlalchemy>=2.0
+psycopg2-binary>=2.9        # SQLAlchemy driver
+psycopg[binary]>=3.1        # LangGraph PostgresSaver driver
 
-# PostgreSQL checkpoint (prod)
-# langgraph-checkpoint-postgres>=2.0
-# psycopg2-binary>=2.9
+# Migrations
+alembic>=1.13
 
-# Audit DB
-# psycopg2-binary>=2.9
+# LangGraph checkpoint (PostgreSQL)
+langgraph-checkpoint-postgres>=2.0
+
+# Web scraping (scrape_page tool)
+requests>=2.31
+beautifulsoup4>=4.12         # optional: cleaner HTML → text (falls back to regex)
+
+# FastAPI + ASGI server
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+python-multipart>=0.0.9     # form data support
+
+# Testing
+pytest>=7.0
+pytest-mock>=3.0

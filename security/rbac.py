@@ -1,152 +1,80 @@
 """
-RBAC — Role-Based Access Control
-Defines roles, clearance ceilings, and which tools each role may call.
+RBAC — Role-Based Access Control (DB-backed, admin-manageable).
+
+Public interface is unchanged — guard nodes and tools call the same functions:
+  get_policy(role)                → RolePolicy
+  get_department_policy(dept)     → DepartmentPolicy
+  effective_tools(role, dept)     → FrozenSet[str]
+  effective_clearance(role, dept) → int
+  is_tool_allowed(role, tool)     → bool
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import FrozenSet
 
-# ---------------------------------------------------------------------------
-# Data classification levels
-# ---------------------------------------------------------------------------
-class Clearance:
-    PUBLIC       = 1
-    INTERNAL     = 2
-    CONFIDENTIAL = 3
-    SECRET       = 4
-
-    LABELS = {1: "PUBLIC", 2: "INTERNAL", 3: "CONFIDENTIAL", 4: "SECRET"}
-
-    @classmethod
-    def label(cls, level: int) -> str:
-        return cls.LABELS.get(level, f"UNKNOWN({level})")
+from db.session import get_db
+from db.models import Role, Department, ClearanceLevel
 
 
-# ---------------------------------------------------------------------------
-# Role definitions
-# ---------------------------------------------------------------------------
 @dataclass(frozen=True)
 class RolePolicy:
     name: str
-    clearance_ceiling: int          # max data level this role can see
-    allowed_tools: FrozenSet[str]   # exact tool names the LLM may call
-    can_write: bool = False         # shorthand guard for write operations
+    clearance_ceiling: int
+    allowed_tools: FrozenSet[str]
 
-
-_READ_TOOLS: FrozenSet[str] = frozenset({
-    "read_file", "list_files", "search_code", "read_log",
-    "git_status", "get_env", "web_search",
-})
-
-_ANALYZE_TOOLS: FrozenSet[str] = _READ_TOOLS | frozenset({
-    "run_shell", "execute_python", "run_tests",
-})
-
-_WRITE_TOOLS: FrozenSet[str] = _ANALYZE_TOOLS | frozenset({
-    "write_file",
-})
-
-ROLES: dict[str, RolePolicy] = {
-    "viewer": RolePolicy(
-        name="viewer",
-        clearance_ceiling=Clearance.PUBLIC,
-        allowed_tools=frozenset({"read_file", "list_files", "web_search"}),
-    ),
-    "analyst": RolePolicy(
-        name="analyst",
-        clearance_ceiling=Clearance.INTERNAL,
-        allowed_tools=_READ_TOOLS,
-    ),
-    "manager": RolePolicy(
-        name="manager",
-        clearance_ceiling=Clearance.CONFIDENTIAL,
-        allowed_tools=_ANALYZE_TOOLS,
-        can_write=False,
-    ),
-    "admin": RolePolicy(
-        name="admin",
-        clearance_ceiling=Clearance.SECRET,
-        allowed_tools=_WRITE_TOOLS,
-        can_write=True,
-    ),
-}
-
-
-# ---------------------------------------------------------------------------
-# Department definitions
-# ---------------------------------------------------------------------------
 
 @dataclass(frozen=True)
 class DepartmentPolicy:
     name: str
-    permitted_tools: FrozenSet[str]   # tools relevant to this dept
-    max_clearance: int                 # dept ceiling — can only reduce role clearance
+    permitted_tools: FrozenSet[str]
+    max_clearance: int
 
 
-DEPARTMENTS: dict[str, DepartmentPolicy] = {
-    "engineering": DepartmentPolicy(
-        name="engineering",
-        permitted_tools=frozenset({
-            "read_file", "write_file", "list_files", "search_code",
-            "run_shell", "git_status", "execute_python", "run_tests", "web_search",
-        }),
-        max_clearance=Clearance.CONFIDENTIAL,
-    ),
-    "devops": DepartmentPolicy(
-        name="devops",
-        permitted_tools=frozenset({
-            "read_file", "write_file", "list_files", "read_log",
-            "run_shell", "git_status", "get_env", "web_search",
-        }),
-        max_clearance=Clearance.CONFIDENTIAL,
-    ),
-    "qa": DepartmentPolicy(
-        name="qa",
-        permitted_tools=frozenset({
-            "read_file", "list_files", "search_code", "read_log",
-            "run_shell", "run_tests", "execute_python", "web_search",
-        }),
-        max_clearance=Clearance.INTERNAL,
-    ),
-    "data": DepartmentPolicy(
-        name="data",
-        permitted_tools=frozenset({
-            "read_file", "list_files", "search_code", "read_log",
-            "execute_python", "web_search",
-        }),
-        max_clearance=Clearance.SECRET,
-    ),
-    "security": DepartmentPolicy(
-        name="security",
-        permitted_tools=_WRITE_TOOLS,
-        max_clearance=Clearance.SECRET,
-    ),
-    "all": DepartmentPolicy(
-        name="all",
-        permitted_tools=_WRITE_TOOLS,  # no dept restriction — role decides
-        max_clearance=Clearance.SECRET,
-    ),
-}
+class Clearance:
+    """Dynamic clearance label lookup — reads from DB."""
 
+    @classmethod
+    def label(cls, level: int) -> str:
+        try:
+            with get_db() as db:
+                row = db.query(ClearanceLevel).filter_by(level_order=level).first()
+                return row.name if row else f"LEVEL({level})"
+        except Exception:
+            return f"LEVEL({level})"
 
-# ---------------------------------------------------------------------------
-# Helper functions
-# ---------------------------------------------------------------------------
 
 def get_policy(role: str) -> RolePolicy:
-    policy = ROLES.get(role)
-    if policy is None:
-        raise PermissionError(f"Unknown role: '{role}'. Allowed: {list(ROLES)}")
-    return policy
+    with get_db() as db:
+        row = (
+            db.query(Role)
+            .filter_by(name=role)
+            .join(Role.clearance_ceiling)
+            .first()
+        )
+    if row is None:
+        raise PermissionError(f"Unknown role: '{role}'")
+    return RolePolicy(
+        name=row.name,
+        clearance_ceiling=row.clearance_ceiling.level_order,
+        allowed_tools=frozenset(row.allowed_tools),
+    )
 
 
 def get_department_policy(department: str) -> DepartmentPolicy:
-    policy = DEPARTMENTS.get(department)
-    if policy is None:
-        raise PermissionError(
-            f"Unknown department: '{department}'. Allowed: {list(DEPARTMENTS)}"
+    with get_db() as db:
+        row = (
+            db.query(Department)
+            .filter_by(name=department)
+            .join(Department.max_clearance)
+            .first()
         )
-    return policy
+    if row is None:
+        raise PermissionError(f"Unknown department: '{department}'")
+    return DepartmentPolicy(
+        name=row.name,
+        permitted_tools=frozenset(row.permitted_tools),
+        max_clearance=row.max_clearance.level_order,
+    )
 
 
 def effective_tools(role: str, department: str) -> FrozenSet[str]:
@@ -162,9 +90,13 @@ def effective_clearance(role: str, department: str) -> int:
     )
 
 
-def is_tool_allowed(role: str, tool_name: str) -> bool:
-    """Check role-level tool permission (without dept context)."""
+def is_tool_allowed(role: str, tool_name: str, department: str = "all") -> bool:
+    """Check tool permission against role ∩ department intersection.
+
+    Always pass ``department`` — the default ``"all"`` is intentionally broad
+    and exists only to preserve call-site compatibility during migration.
+    """
     try:
-        return tool_name in get_policy(role).allowed_tools
+        return tool_name in effective_tools(role, department)
     except PermissionError:
         return False

@@ -1,7 +1,8 @@
 import subprocess
 from langchain_core.tools import tool
 from tools._safety import check_command, log_tool_call
-from tools._permission import permission_required
+from tools._permission import permission_required, _clearance_ctx
+from security.output_classifier import check_output_clearance
 
 
 @tool
@@ -38,6 +39,10 @@ def run_shell(command: str) -> str:
     except Exception as e:
         output = f"ERROR: {e}"
 
+    redacted = check_output_clearance("(shell output)", output, _clearance_ctx.get())
+    if redacted:
+        log_tool_call("run_shell", {"command": command}, redacted)
+        return redacted
     log_tool_call("run_shell", {"command": command}, output)
     return output
 

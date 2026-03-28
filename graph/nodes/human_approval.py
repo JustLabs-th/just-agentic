@@ -28,10 +28,18 @@ def _is_dangerous(state: AgentState) -> bool:
     intent = state.get("intent", "")
     goal = (state.get("goal_for_agent") or "").lower()
 
+    # LLM-assigned intent check
     if intent in _APPROVAL_INTENTS:
         return True
     if any(kw in goal for kw in _DANGEROUS_KEYWORDS):
         return True
+
+    # Independent check: scan the original user goal directly (not LLM-assigned).
+    # This fires even if the LLM misclassifies the intent.
+    user_goal = (state.get("user_goal") or "").lower()
+    if any(kw in user_goal for kw in _DANGEROUS_KEYWORDS):
+        return True
+
     return False
 
 

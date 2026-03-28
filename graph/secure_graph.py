@@ -1,29 +1,35 @@
 """
-Secure Multi-Agent Graph — Option A
+Secure Multi-Agent Graph
 
 Flow:
   START
-    → rbac_guard_node          (validate role, populate allowed_tools)
-    → data_classification_node (filter context by clearance level)
-    → supervisor_node          (route to specialist agent)
+    → rbac_guard               (validate JWT / plain credentials, populate allowed_tools)
+    → department_guard         (intersect role ∩ dept tools, cap clearance)
+    → data_classifier          (strip context above clearance level)
+    → intent_guard             (deterministic write/exec keyword block)
+    → prompt_injection_guard   (regex injection scan)
+    → supervisor               (LLM routing: plan + route to specialist agent)
+    → human_approval           (interrupt for dangerous actions)
     ↙            ↓           ↘
   backend      devops         qa
     ↘            ↓           ↙
-    → supervisor_node          (review → route next or finish)
-    → audit_log_node           (write immutable record)
+    → supervisor               (review result → route next or finish)
+    → audit_log                (write immutable JSONL record)
   END
 
-Defense in Depth:
-  Layer 1 — rbac_guard:       blocks unknown roles at graph entry
-  Layer 2 — data_classifier:  strips data above clearance before any LLM call
-  Layer 3 — agent nodes:      filter allowed_tools before binding to LLM
+Defense in Depth (7 layers):
+  Layer 1 — rbac_guard:              blocks unknown roles / invalid JWT
+  Layer 2 — department_guard:        intersects role ∩ dept, caps clearance ceiling
+  Layer 3 — data_classifier:         strips data chunks above user clearance
+  Layer 4 — intent_guard:            keyword-blocks write/exec intents pre-LLM
+  Layer 5 — prompt_injection_guard:  regex-blocks injection patterns pre-LLM
+  Layer 6 — human_approval:          interrupt gate for code_write / infra_write
+  Layer 7 — @permission_required:    tool-level re-check at execution time
 """
 
 import os
-import sqlite3
 from langgraph.graph import StateGraph, END
 from langgraph.checkpoint.memory import MemorySaver
-from langgraph.checkpoint.sqlite import SqliteSaver
 
 from graph.state import AgentState
 from graph.nodes.rbac_guard import rbac_guard_node
@@ -33,7 +39,7 @@ from graph.nodes.intent_guard import intent_guard_node
 from graph.nodes.prompt_injection_guard import prompt_injection_guard_node
 from graph.nodes.human_approval import human_approval_node
 from graph.nodes.audit_log import audit_log_node
-from graph.supervisor import supervisor_node, route_after_supervisor
+from graph.supervisor import supervisor_node
 from graph.agents.backend import backend_node
 from graph.agents.devops import devops_node
 from graph.agents.qa import qa_node
@@ -48,7 +54,7 @@ MAX_ITERATIONS = int(os.getenv("MAX_ITERATIONS", "8"))
 def route_after_rbac(state: AgentState) -> str:
     if state.get("status") == "permission_denied":
         return "audit_log"
-    return "data_classifier"
+    return "department_guard"
 
 
 # ---------------------------------------------------------------------------
@@ -101,7 +107,7 @@ def build_secure_graph():
     graph.add_conditional_edges(
         "rbac_guard",
         route_after_rbac,
-        {"data_classifier": "department_guard", "audit_log": "audit_log"},
+        {"department_guard": "department_guard", "audit_log": "audit_log"},
     )
 
     # ── Dept guard → classifier or block ──
@@ -151,13 +157,27 @@ def build_secure_graph():
     # ── Audit → END ──
     graph.add_edge("audit_log", END)
 
-    checkpoint_backend = os.getenv("CHECKPOINT_BACKEND", "sqlite")
-
-    if checkpoint_backend == "memory":
-        checkpointer = MemorySaver()
-    else:
-        db_path = os.getenv("CHECKPOINT_DB", "checkpoints.db")
-        conn = sqlite3.connect(db_path, check_same_thread=False)
-        checkpointer = SqliteSaver(conn)
-
+    checkpointer = _make_checkpointer()
     return graph.compile(checkpointer=checkpointer)
+
+
+def _make_checkpointer():
+    """Use PostgresSaver when DATABASE_URL is set, else fall back to MemorySaver."""
+    db_url = os.getenv("DATABASE_URL", "")
+    if not db_url:
+        return MemorySaver()
+
+    # Normalize URL for psycopg (psycopg3 uses plain postgresql://)
+    conn_url = db_url
+    for prefix in ("postgresql+psycopg2://", "postgresql+psycopg://"):
+        if conn_url.startswith(prefix):
+            conn_url = conn_url.replace(prefix, "postgresql://", 1)
+            break
+
+    import psycopg
+    from langgraph.checkpoint.postgres import PostgresSaver
+
+    conn = psycopg.connect(conn_url)
+    saver = PostgresSaver(conn)
+    saver.setup()
+    return saver

@@ -129,14 +129,14 @@ class TestEffectiveClearance:
         assert effective_clearance("analyst", "data") == Clearance.INTERNAL
 
 
-# ── is_tool_allowed (role only, no dept) ──────────────────────────────────
+# ── is_tool_allowed (role ∩ dept) ─────────────────────────────────────────
 
 class TestIsToolAllowed:
     def test_viewer_cannot_run_shell(self):
-        assert is_tool_allowed("viewer", "run_shell") is False
+        assert is_tool_allowed("viewer", "run_shell", "engineering") is False
 
     def test_manager_can_run_shell(self):
-        assert is_tool_allowed("manager", "run_shell") is True
+        assert is_tool_allowed("manager", "run_shell", "engineering") is True
 
     def test_unknown_role_returns_false(self):
-        assert is_tool_allowed("ghost", "read_file") is False
+        assert is_tool_allowed("ghost", "read_file", "engineering") is False

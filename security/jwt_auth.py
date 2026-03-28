@@ -35,14 +35,14 @@ def decode_token(token: str) -> UserContext:
         payload = jwt.decode(
             token, secret,
             algorithms=["HS256"],
-            options={"require": ["sub", "role", "exp"]},
+            options={"require": ["sub", "role", "dept", "exp"]},
         )
     except Exception as exc:
         raise ValueError(f"Invalid or expired token: {exc}") from exc
 
     user_id    = payload.get("sub", "")
     role       = payload.get("role", "viewer")
-    department = payload.get("dept", "all")
+    department = payload["dept"]
 
     if not user_id:
         raise ValueError("Token missing 'sub' claim")

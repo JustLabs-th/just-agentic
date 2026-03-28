@@ -18,6 +18,7 @@ if not os.getenv("OPENAI_API_KEY") and os.getenv("LLM_PROVIDER", "openai") == "o
     print("ERROR: OPENAI_API_KEY not set. Copy .env.example → .env and add your key.")
     sys.exit(1)
 
+from db import init_db
 from graph.state import AgentState
 from graph.secure_graph import build_secure_graph
 
@@ -180,6 +181,8 @@ def run_task(task: str, app, history: list, user_id: str, role: str,
 
 
 def main():
+    init_db()
+
     print("just-agentic — Secure Multi-Agent Team")
     print("Agents: Supervisor | Backend | DevOps | QA")
     print("Type 'exit' to quit, 'whoami' to check role.\n")

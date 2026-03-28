@@ -6,10 +6,10 @@ Node 2: Data Classification
 """
 
 from security.classification import filter_by_clearance
-from graph.secure_state import SecureAgentState
+from graph.state import AgentState
 
 
-def data_classification_node(state: SecureAgentState) -> SecureAgentState:
+def data_classification_node(state: AgentState) -> AgentState:
     clearance = state.get("clearance_level", 1)
     raw_context = state.get("context", [])
 

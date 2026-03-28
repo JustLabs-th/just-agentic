@@ -39,13 +39,18 @@ def permission_required(tool_name: str):
         def wrapper(*args, **kwargs):
             role = _role_ctx.get()
             dept = _dept_ctx.get()
-            if role:
-                allowed = effective_tools(role, dept)
-                if tool_name not in allowed:
-                    return (
-                        f"[PERMISSION DENIED] '{tool_name}' is not available for "
-                        f"role='{role}' department='{dept}'."
-                    )
+            if not role:
+                # No identity context — deny rather than allow (fail-closed)
+                return (
+                    f"[PERMISSION DENIED] '{tool_name}' requires an authenticated "
+                    f"session. No role context is set."
+                )
+            allowed = effective_tools(role, dept)
+            if tool_name not in allowed:
+                return (
+                    f"[PERMISSION DENIED] '{tool_name}' is not available for "
+                    f"role='{role}' department='{dept}'."
+                )
             return fn(*args, **kwargs)
         return wrapper
     return decorator
