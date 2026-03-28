@@ -143,9 +143,16 @@ async def _stream_graph(app, input_, config: dict) -> AsyncGenerator[str, None]:
 
                 # Done / error — terminal
                 if s.get("status") in ("done", "error"):
+                    # Safety net: emit final_answer as message if nothing was sent yet
+                    final = s.get("final_answer", "")
+                    if final and not seen_msg_ids:
+                        chunks.append(_sse("message", {
+                            "content": final,
+                            "role":    "assistant",
+                        }))
                     chunks.append(_sse("done", {
                         "status":       s.get("status"),
-                        "final_answer": s.get("final_answer", ""),
+                        "final_answer": final,
                         "error":        s.get("error", ""),
                     }))
                     for c in chunks:

@@ -161,7 +161,11 @@ def supervisor_node(state: AgentState) -> AgentState:
     }
 
     if done:
-        updates["final_answer"] = decision.get("goal_for_agent", "Task complete.")
+        from langchain_core.messages import AIMessage as _AIMsg
+        final = decision.get("goal_for_agent", "") or decision.get("reason", "Task complete.")
+        updates["final_answer"] = final
+        # Inject as AIMessage so the SSE stream picks it up as a visible message
+        updates["messages"] = list(state.get("messages", [])) + [_AIMsg(content=final)]
         updates["current_agent"] = next_agent if next_agent in valid_agents else "supervisor"
     else:
         updates["current_agent"] = next_agent
@@ -198,6 +202,7 @@ def _finish(state, message, iteration, routing_history, retry_count,
         "error": error,
     }
     supervisor_log.append(log_entry)
+    from langchain_core.messages import AIMessage as _AIMsg
     return {
         **state,
         "current_agent": "supervisor",
@@ -205,6 +210,7 @@ def _finish(state, message, iteration, routing_history, retry_count,
         "status": "done" if not error else "error",
         "error": error,
         "final_answer": message,
+        "messages": list(state.get("messages", [])) + [_AIMsg(content=message)],
         "routing_history": routing_history + ["finish"],
         "retry_count": retry_count,
         "supervisor_log": supervisor_log,
