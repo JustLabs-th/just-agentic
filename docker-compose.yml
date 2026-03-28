@@ -42,8 +42,8 @@ services:
       context: .
       dockerfile: Dockerfile.frontend
       args:
-        # In production replace with your real API URL or leave empty for same-origin via Nginx
-        NEXT_PUBLIC_API_URL: ""
+        # Docker internal: frontend → api service; override for external deployments
+        NEXT_PUBLIC_API_URL: "http://api:8000"
     ports:
       - "3000:3000"
     environment:

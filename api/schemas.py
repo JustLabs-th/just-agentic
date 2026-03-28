@@ -90,3 +90,24 @@ class UserAgentBindingResponse(BaseModel):
     is_active: bool
 
     model_config = {"from_attributes": True}
+
+
+# ── Knowledge base ─────────────────────────────────────────────────────────────
+
+class KnowledgeUploadRequest(BaseModel):
+    document_name: str
+    content: str
+    clearance_level: int = 1          # PUBLIC=1, INTERNAL=2, CONFIDENTIAL=3, SECRET=4
+    department: Optional[str] = None  # None = accessible by all departments
+    source_url: Optional[str] = None
+
+
+class KnowledgeDocumentResponse(BaseModel):
+    document_id: str
+    document_name: str
+    chunk_count: int
+    clearance_level: int
+    department: Optional[str]
+    source_url: Optional[str]
+    created_by: str
+    created_at: datetime

@@ -17,6 +17,7 @@ from tools.web_search import web_search
 from tools.db_query import query_db
 from tools.secrets_scan import scan_secrets
 from tools.scraper import scrape_page
+from tools.knowledge_search import search_knowledge
 from tools._permission import set_role_context, get_role_context, permission_required
 
 
@@ -43,6 +44,8 @@ ALL_TOOLS: list[BaseTool] = [
     query_db,
     # Security
     scan_secrets,
+    # Knowledge base (RAG)
+    search_knowledge,
 ]
 
 TOOL_MAP: dict[str, BaseTool] = {t.name: t for t in ALL_TOOLS}

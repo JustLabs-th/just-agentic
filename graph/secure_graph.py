@@ -243,7 +243,7 @@ def _make_checkpointer():
     import psycopg
     from langgraph.checkpoint.postgres import PostgresSaver
 
-    conn = psycopg.connect(conn_url)
+    conn = psycopg.connect(conn_url, autocommit=True)
     saver = PostgresSaver(conn)
     saver.setup()
     return saver

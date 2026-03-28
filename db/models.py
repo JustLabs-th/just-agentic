@@ -4,6 +4,13 @@ from datetime import datetime
 from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, JSON, func
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
+try:
+    from pgvector.sqlalchemy import Vector
+    _VECTOR_AVAILABLE = True
+except ImportError:
+    Vector = None
+    _VECTOR_AVAILABLE = False
+
 
 class Base(DeclarativeBase):
     pass
@@ -119,6 +126,36 @@ class UserAgentBinding(Base):
     agent_definition: Mapped[AgentDefinition] = relationship(
         "AgentDefinition", back_populates="bindings"
     )
+
+
+# ── RAG Knowledge Base ────────────────────────────────────────────────────────
+
+EMBEDDING_DIM = 1536  # OpenAI text-embedding-3-small
+
+
+class KnowledgeChunk(Base):
+    """One chunk of a knowledge document with its vector embedding."""
+    __tablename__ = "knowledge_chunks"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    document_id: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    document_name: Mapped[str] = mapped_column(String(256), nullable=False)
+    chunk_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    clearance_level: Mapped[int] = mapped_column(Integer, nullable=False, default=1)  # PUBLIC=1
+    department: Mapped[str | None] = mapped_column(String(64), nullable=True)  # None = all depts
+    source_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_by: Mapped[str] = mapped_column(String(128), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+    # Vector column — only when pgvector is installed (PostgreSQL prod)
+    if _VECTOR_AVAILABLE and Vector is not None:
+        embedding: Mapped[list[float] | None] = mapped_column(
+            Vector(EMBEDDING_DIM), nullable=True
+        )
 
 
 # ── LOGS (append-only) ────────────────────────────────────────────────────────

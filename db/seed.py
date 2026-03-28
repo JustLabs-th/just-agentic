@@ -11,7 +11,7 @@ _READ_TOOLS: list[str] = [
 ]
 
 # analyst adds reconnaissance + reporting tools
-_ANALYST_TOOLS: list[str] = _READ_TOOLS + ["scan_secrets", "scrape_page"]
+_ANALYST_TOOLS: list[str] = _READ_TOOLS + ["scan_secrets", "scrape_page", "search_knowledge"]
 
 # manager adds execution + DB inspection
 _ANALYZE_TOOLS: list[str] = _ANALYST_TOOLS + [
@@ -44,6 +44,7 @@ _DEFAULT_DEPARTMENTS = [
             "read_file", "write_file", "list_files", "search_code",
             "run_shell", "git_status", "execute_python", "run_tests",
             "web_search", "scrape_page", "scan_secrets", "query_db",
+            "search_knowledge",
         ],
     },
     {
@@ -51,7 +52,7 @@ _DEFAULT_DEPARTMENTS = [
         "permitted_tools": [
             "read_file", "write_file", "list_files", "read_log",
             "run_shell", "git_status", "get_env", "web_search",
-            "scrape_page", "query_db",
+            "scrape_page", "query_db", "search_knowledge",
         ],
     },
     {
@@ -59,7 +60,7 @@ _DEFAULT_DEPARTMENTS = [
         "permitted_tools": [
             "read_file", "list_files", "search_code", "read_log",
             "run_shell", "run_tests", "execute_python", "web_search",
-            "scrape_page", "scan_secrets",
+            "scrape_page", "scan_secrets", "search_knowledge",
         ],
     },
     {
@@ -67,15 +68,24 @@ _DEFAULT_DEPARTMENTS = [
         "permitted_tools": [
             "read_file", "list_files", "search_code", "read_log",
             "execute_python", "web_search", "scrape_page", "query_db",
+            "search_knowledge",
         ],
     },
     {
         "name": "security", "max_clearance": "SECRET",
-        "permitted_tools": _WRITE_TOOLS,
+        "permitted_tools": _WRITE_TOOLS + ["search_knowledge"],
     },
     {
         "name": "all", "max_clearance": "SECRET",
-        "permitted_tools": _WRITE_TOOLS,
+        "permitted_tools": _WRITE_TOOLS + ["search_knowledge"],
+    },
+    {
+        "name": "developer", "max_clearance": "CONFIDENTIAL",
+        "permitted_tools": [
+            "read_file", "write_file", "list_files", "search_code", "read_log",
+            "run_shell", "git_status", "execute_python", "run_tests", "get_env",
+            "web_search", "search_knowledge",
+        ],
     },
 ]
 
@@ -102,6 +112,34 @@ _DEFAULT_AGENTS = [
             "scrape_page", "query_db",
         ],
         "department": "devops",
+    },
+    {
+        "name": "developer",
+        "display_name": "Developer Agent",
+        "system_prompt": (
+            "You are Developer Agent — an AI pair programmer embedded in your team's secure environment.\n"
+            "\n"
+            "Work style:\n"
+            "- Explore before acting: use read_file, list_files, search_code, git_status to understand context first\n"
+            "- Think out loud: briefly explain what you found and what you're about to do\n"
+            "- Ask when ambiguous: if the goal is unclear, ask one focused question rather than guessing\n"
+            "- Execute precisely: write clean, minimal changes — no unnecessary refactoring\n"
+            "- Verify: after changes, run tests or show output to confirm correctness\n"
+            "\n"
+            "Permission rules (enforced by the system — do not attempt to bypass):\n"
+            "- You can only use tools granted to your role × department intersection\n"
+            "- You can only read knowledge and data at or below your clearance level\n"
+            "- write_file and run_shell on write tasks require human approval — wait for it\n"
+            "- All actions are logged for audit\n"
+            "\n"
+            "When you don't have a tool needed for the task, explain clearly what permission is required and stop."
+        ),
+        "allowed_tools": [
+            "read_file", "write_file", "list_files", "search_code", "read_log",
+            "run_shell", "git_status", "execute_python", "run_tests", "get_env",
+            "web_search", "search_knowledge",
+        ],
+        "department": "developer",
     },
     {
         "name": "qa",
