@@ -44,11 +44,12 @@ class TestPermissionRequired:
         result = fn()
         assert "PERMISSION DENIED" in result
 
-    def test_no_role_context_passes_through(self):
-        """Empty role = no context set yet — should not block (fail open for safety)."""
+    def test_no_role_context_is_blocked(self):
+        """Empty role = unauthenticated session — should fail closed."""
         set_role_context("", "all", 0)
         fn = _make_tool("write_file")
-        assert fn() == "executed"
+        result = fn()
+        assert "PERMISSION DENIED" in result
 
     def test_error_message_includes_dept(self):
         set_role_context("analyst", "devops", 2)

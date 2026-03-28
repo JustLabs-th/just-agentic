@@ -69,6 +69,56 @@ class User(Base):
 
     role: Mapped[Role] = relationship("Role", back_populates="users")
     department: Mapped[Department] = relationship("Department", back_populates="users")
+    agent_bindings: Mapped[list["UserAgentBinding"]] = relationship(
+        "UserAgentBinding", back_populates="user"
+    )
+
+
+# ── ABAC — dynamic agent definitions ──────────────────────────────────────────
+
+class AgentDefinition(Base):
+    """A custom agent created by a super-admin and bound to specific users."""
+    __tablename__ = "agent_definitions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
+    display_name: Mapped[str] = mapped_column(String(128), nullable=False)
+    system_prompt: Mapped[str] = mapped_column(Text, nullable=False)
+    allowed_tools: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    department: Mapped[str] = mapped_column(String(64), nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, index=True)
+    is_default: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    created_by: Mapped[str] = mapped_column(String(128), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+    bindings: Mapped[list["UserAgentBinding"]] = relationship(
+        "UserAgentBinding", back_populates="agent_definition"
+    )
+
+
+class UserAgentBinding(Base):
+    """Binds a user to a specific agent definition."""
+    __tablename__ = "user_agent_bindings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[str] = mapped_column(
+        String(128), ForeignKey("users.user_id"), nullable=False
+    )
+    agent_definition_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("agent_definitions.id"), nullable=False
+    )
+    assigned_by: Mapped[str] = mapped_column(String(128), nullable=False)
+    assigned_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+    user: Mapped[User] = relationship("User", back_populates="agent_bindings")
+    agent_definition: Mapped[AgentDefinition] = relationship(
+        "AgentDefinition", back_populates="bindings"
+    )
 
 
 # ── LOGS (append-only) ────────────────────────────────────────────────────────

@@ -51,13 +51,15 @@ def get_policy(role: str) -> RolePolicy:
             .join(Role.clearance_ceiling)
             .first()
         )
-    if row is None:
-        raise PermissionError(f"Unknown role: '{role}'")
-    return RolePolicy(
-        name=row.name,
-        clearance_ceiling=row.clearance_ceiling.level_order,
-        allowed_tools=frozenset(row.allowed_tools),
-    )
+        if row is None:
+            raise PermissionError(f"Unknown role: '{role}'")
+        # Access relationship attributes inside the session to avoid DetachedInstanceError
+        policy = RolePolicy(
+            name=row.name,
+            clearance_ceiling=row.clearance_ceiling.level_order,
+            allowed_tools=frozenset(row.allowed_tools),
+        )
+    return policy
 
 
 def get_department_policy(department: str) -> DepartmentPolicy:
@@ -68,13 +70,14 @@ def get_department_policy(department: str) -> DepartmentPolicy:
             .join(Department.max_clearance)
             .first()
         )
-    if row is None:
-        raise PermissionError(f"Unknown department: '{department}'")
-    return DepartmentPolicy(
-        name=row.name,
-        permitted_tools=frozenset(row.permitted_tools),
-        max_clearance=row.max_clearance.level_order,
-    )
+        if row is None:
+            raise PermissionError(f"Unknown department: '{department}'")
+        policy = DepartmentPolicy(
+            name=row.name,
+            permitted_tools=frozenset(row.permitted_tools),
+            max_clearance=row.max_clearance.level_order,
+        )
+    return policy
 
 
 def effective_tools(role: str, department: str) -> FrozenSet[str]:

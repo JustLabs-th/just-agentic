@@ -22,8 +22,13 @@ class AgentState(TypedDict, total=False):
     data_classifications_accessed: list[int]
 
     # ── Multi-agent routing ────────────────────────────────────────────────
+    # ── ABAC — resolved by agent_resolver, consumed by supervisor ─────────────────
+    allowed_agents: list[str]          # agent names the user is bound to
+    agent_definitions: list[dict]      # [{name, display_name, system_prompt, allowed_tools}]
+    single_agent_mode: bool            # True when len(allowed_agents) == 1
+
     user_goal: str
-    current_agent: str            # supervisor | backend | devops | qa
+    current_agent: str            # supervisor | backend | devops | qa | <custom>
     plan: list[str]
     goal_for_agent: str           # supervisor → agent instruction per turn
     working_memory: dict[str, Any]

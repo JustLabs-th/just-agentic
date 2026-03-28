@@ -18,6 +18,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from db import init_db
 from api.routers import auth, agent
+from api.routers.admin import router as admin_router
 
 app = FastAPI(title="just-agentic", version="1.0.0", docs_url="/api/docs")
 
@@ -33,8 +34,9 @@ app.add_middleware(
 )
 
 # ── Routers ───────────────────────────────────────────────────────────────────
-app.include_router(auth.router,  prefix="/api/auth",  tags=["auth"])
-app.include_router(agent.router, prefix="/api/agent", tags=["agent"])
+app.include_router(auth.router,   prefix="/api/auth",  tags=["auth"])
+app.include_router(agent.router,  prefix="/api/agent", tags=["agent"])
+app.include_router(admin_router)
 
 
 # ── Lifecycle ─────────────────────────────────────────────────────────────────

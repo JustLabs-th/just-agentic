@@ -2,15 +2,13 @@
 
 import pytest
 from security.rbac import (
-    Clearance,
     get_policy,
     get_department_policy,
     effective_tools,
     effective_clearance,
     is_tool_allowed,
-    ROLES,
-    DEPARTMENTS,
 )
+from security.output_classifier import Clearance
 
 
 # ── Role policies ──────────────────────────────────────────────────────────

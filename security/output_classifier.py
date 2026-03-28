@@ -8,7 +8,19 @@ Used by read_file and read_log tools.
 """
 
 import re
-from security.rbac import Clearance
+
+# Clearance level constants (mirrors db/seed.py level_order values)
+class Clearance:
+    PUBLIC       = 1
+    INTERNAL     = 2
+    CONFIDENTIAL = 3
+    SECRET       = 4
+
+    _LABELS = {1: "PUBLIC", 2: "INTERNAL", 3: "CONFIDENTIAL", 4: "SECRET"}
+
+    @classmethod
+    def label(cls, level: int) -> str:
+        return cls._LABELS.get(level, f"LEVEL({level})")
 
 # ── Path-based classification ──────────────────────────────────────────────
 # Paths matching these patterns are treated as the given classification level.

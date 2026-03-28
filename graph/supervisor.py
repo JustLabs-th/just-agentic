@@ -12,8 +12,12 @@ from llm.adapter import get_adapter
 MAX_ITERATIONS = int(os.getenv("MAX_ITERATIONS", "8"))
 MAX_RETRIES_PER_AGENT = 2
 CONFIDENCE_THRESHOLD = float(os.getenv("CONFIDENCE_THRESHOLD", "0.55"))
-LOOP_WINDOW = 3          # how many recent turns to check for agent loop
-VALID_AGENTS = {"backend", "devops", "qa"}
+LOOP_WINDOW = 3
+
+
+def _valid_agents(state: AgentState) -> set[str]:
+    """Return the set of agent names the user is allowed to use."""
+    return set(state.get("allowed_agents") or [])
 
 
 def supervisor_node(state: AgentState) -> AgentState:
@@ -21,6 +25,7 @@ def supervisor_node(state: AgentState) -> AgentState:
     routing_history: list[str] = list(state.get("routing_history") or [])
     retry_count: dict[str, int] = dict(state.get("retry_count") or {})
     supervisor_log: list[dict] = list(state.get("supervisor_log") or [])
+    valid_agents = _valid_agents(state)
 
     # ── Hard stop: max iterations ──────────────────────────────────────────
     if iteration >= MAX_ITERATIONS:
@@ -38,6 +43,32 @@ def supervisor_node(state: AgentState) -> AgentState:
             error="routing_loop",
         )
 
+    # ── Single-agent mode: skip LLM on first turn ──────────────────────────
+    if state.get("single_agent_mode") and not routing_history:
+        agent_name = list(valid_agents)[0]
+        log_entry = {
+            "ts": datetime.now(timezone.utc).isoformat(),
+            "iteration": iteration + 1,
+            "intent": "direct_route",
+            "confidence": 1.0,
+            "next_agent": agent_name,
+            "reason": "single_agent_mode: bypassing LLM routing",
+            "done": False,
+        }
+        supervisor_log.append(log_entry)
+        return {
+            **state,
+            "current_agent": agent_name,
+            "intent": "direct_route",
+            "confidence": 1.0,
+            "goal_for_agent": state.get("user_goal", ""),
+            "iteration": iteration + 1,
+            "routing_history": routing_history + [agent_name],
+            "retry_count": retry_count,
+            "supervisor_log": supervisor_log,
+            "status": "working",
+        }
+
     # ── Build context for supervisor LLM ──────────────────────────────────
     messages = state.get("messages", [])
     context_parts = [
@@ -53,6 +84,15 @@ def supervisor_node(state: AgentState) -> AgentState:
     if routing_history:
         context_parts.append(f"Routing history (last 5): {routing_history[-5:]}")
 
+    # Inject dynamic agent descriptions
+    agent_defs = state.get("agent_definitions") or []
+    if agent_defs:
+        agents_desc = "\n".join(
+            f"- {d['name']}: {d.get('system_prompt', '')[:120].splitlines()[0]}"
+            for d in agent_defs
+        )
+        context_parts.append(f"Available agents:\n{agents_desc}")
+
     for msg in messages[-6:]:
         role = getattr(msg, "type", "unknown")
         content = msg.content if hasattr(msg, "content") else str(msg)
@@ -64,7 +104,7 @@ def supervisor_node(state: AgentState) -> AgentState:
         context_parts.append(f"[{role}]: {content[:500]}")
 
     raw = get_adapter().invoke(SUPERVISOR_SYSTEM_PROMPT, "\n".join(context_parts))
-    decision = _parse_decision(raw)
+    decision = _parse_decision(raw, valid_agents)
 
     next_agent = decision["next_agent"]
     done = decision["done"]
@@ -72,18 +112,16 @@ def supervisor_node(state: AgentState) -> AgentState:
     intent = decision["intent"]
 
     # ── Fallback: low confidence ───────────────────────────────────────────
-    if not done and confidence < CONFIDENCE_THRESHOLD and next_agent in VALID_AGENTS:
-        # Try the fallback order: if backend fails → qa, devops → qa, qa → backend
-        fallback_map = {"backend": "qa", "devops": "qa", "qa": "backend"}
-        fallback = fallback_map.get(next_agent, next_agent)
-        decision["reason"] += f" [low confidence {confidence:.2f} → fallback to {fallback}]"
-        next_agent = fallback
-        decision["next_agent"] = fallback
+    if not done and confidence < CONFIDENCE_THRESHOLD and next_agent in valid_agents:
+        fallback = _fallback_agent(next_agent, valid_agents)
+        if fallback != next_agent:
+            decision["reason"] += f" [low confidence {confidence:.2f} → fallback to {fallback}]"
+            next_agent = fallback
+            decision["next_agent"] = fallback
 
     # ── Retry / escalation ────────────────────────────────────────────────
-    if not done and next_agent in VALID_AGENTS:
+    if not done and next_agent in valid_agents:
         agent_retries = retry_count.get(next_agent, 0)
-        # Detect if last agent returned an empty/error result
         last_result = _last_agent_result(messages)
         if last_result in ("empty", "error") and routing_history and routing_history[-1] == next_agent:
             if agent_retries >= MAX_RETRIES_PER_AGENT:
@@ -124,7 +162,7 @@ def supervisor_node(state: AgentState) -> AgentState:
 
     if done:
         updates["final_answer"] = decision.get("goal_for_agent", "Task complete.")
-        updates["current_agent"] = next_agent if next_agent in VALID_AGENTS else "supervisor"
+        updates["current_agent"] = next_agent if next_agent in valid_agents else "supervisor"
     else:
         updates["current_agent"] = next_agent
 
@@ -132,6 +170,20 @@ def supervisor_node(state: AgentState) -> AgentState:
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
+
+def _fallback_agent(current: str, valid_agents: set[str]) -> str:
+    """Pick a fallback agent that is not the current one."""
+    # Prefer this priority order for the classic trio
+    preferred = ["qa", "backend", "devops"]
+    for candidate in preferred:
+        if candidate in valid_agents and candidate != current:
+            return candidate
+    # Any other agent that isn't current
+    for candidate in valid_agents:
+        if candidate != current:
+            return candidate
+    return current
+
 
 def _finish(state, message, iteration, routing_history, retry_count,
             supervisor_log, error="") -> AgentState:
@@ -174,7 +226,7 @@ def _last_agent_result(messages: list) -> str:
     return "ok"
 
 
-def _parse_decision(content: str) -> dict:
+def _parse_decision(content: str, valid_agents: set[str]) -> dict:
     """Parse supervisor JSON. Returns safe defaults on failure."""
     default = {
         "next_agent": "finish",
@@ -198,7 +250,7 @@ def _parse_decision(content: str) -> dict:
         confidence = float(data.get("confidence", 0.5))
         confidence = max(0.0, min(1.0, confidence))
 
-        if next_agent not in VALID_AGENTS:
+        if next_agent not in valid_agents:
             done = True
 
         return {
@@ -212,9 +264,9 @@ def _parse_decision(content: str) -> dict:
     except (json.JSONDecodeError, AttributeError, ValueError):
         pass
 
-    # Fallback: keyword scan
+    # Fallback: keyword scan against dynamic valid_agents
     lower = content.lower()
-    for agent in ("backend", "devops", "qa"):
+    for agent in valid_agents:
         if agent in lower:
             return {**default, "next_agent": agent, "done": False, "confidence": 0.4}
 

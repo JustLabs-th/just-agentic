@@ -1,7 +1,7 @@
 """Tests for tool output classification."""
 
 import pytest
-from security.rbac import Clearance
+from security.output_classifier import Clearance
 from security.output_classifier import (
     classify_path,
     classify_content,

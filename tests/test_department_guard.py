@@ -3,7 +3,7 @@
 import pytest
 from langchain_core.messages import AIMessage
 from graph.nodes.department_guard import department_guard_node
-from security.rbac import Clearance
+from security.output_classifier import Clearance
 
 
 def _state(role: str, department: str, allowed_tools: list[str] | None = None,

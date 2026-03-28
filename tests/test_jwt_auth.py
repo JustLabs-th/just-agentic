@@ -35,16 +35,15 @@ class TestDecodeToken:
         assert ctx.department == "engineering"
         assert ctx.clearance_level > 0
 
-    def test_default_department_is_all(self):
+    def test_missing_dept_claim_raises(self):
+        """dept is a required claim — token without it is rejected."""
         from security.jwt_auth import decode_token
-        token = _make_token({"dept": None})
-        # jwt.encode drops None values; "dept" won't be in payload
         import jwt
         exp = datetime.now(timezone.utc) + timedelta(hours=1)
         raw = jwt.encode({"sub": "alice", "role": "analyst", "exp": exp},
                          "test-secret-for-pytest", algorithm="HS256")
-        ctx = decode_token(raw)
-        assert ctx.department == "all"
+        with pytest.raises(ValueError):
+            decode_token(raw)
 
     def test_expired_token_raises(self):
         from security.jwt_auth import decode_token
