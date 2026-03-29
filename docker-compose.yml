@@ -1,4 +1,14 @@
 services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
   postgres:
     image: postgres:16-alpine
     environment:
@@ -25,9 +35,15 @@ services:
     env_file: .env
     environment:
       DATABASE_URL: postgresql://just_agentic:just_agentic@postgres:5432/just_agentic
+      REDIS_URL: redis://redis:6379
+      WORKSPACE_ROOT: /workspace
       # CORS_ORIGINS: http://localhost:3000,https://yourdomain.com
+    volumes:
+      - ${HOST_WORKSPACE:-./workspace}:/workspace
     depends_on:
       postgres:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     restart: unless-stopped
     healthcheck:
@@ -37,13 +53,78 @@ services:
       retries: 5
       start_period: 15s
 
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    command: ["arq", "worker.WorkerSettings"]
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://just_agentic:just_agentic@postgres:5432/just_agentic
+      REDIS_URL: redis://redis:6379
+      WORKSPACE_ROOT: /workspace
+      # Route dangerous tools through the isolated Tool Service
+      TOOL_SERVICE_URL: http://tool-service:8001
+      TOOL_SERVICE_SECRET: ${TOOL_SERVICE_SECRET:-changeme-in-production}
+    volumes:
+      - ${HOST_WORKSPACE:-./workspace}:/workspace
+    networks:
+      - default
+      - tool-net
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      tool-service:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ── Tool Execution Service (Phase 2 — isolation) ──────────────────────────
+  # Runs shell/python tools in an isolated container:
+  #   - tool-net only: no outbound internet access
+  #   - /app read-only filesystem
+  #   - /tmp via tmpfs (ephemeral, size-capped)
+  #   - CPU + memory hard limits
+  tool-service:
+    build:
+      context: .
+      dockerfile: Dockerfile.tool-service
+    environment:
+      TOOL_SERVICE_SECRET: ${TOOL_SERVICE_SECRET:-changeme-in-production}
+      WORKSPACE_ROOT: /workspace
+      # Sandbox resource limits (applied inside each subprocess)
+      SANDBOX_CPU_SOFT: "30"
+      SANDBOX_CPU_HARD: "60"
+      SANDBOX_MEM_MB: "512"
+      SANDBOX_FSIZE_MB: "50"
+      SANDBOX_NPROC: "64"
+    volumes:
+      - ${HOST_WORKSPACE:-./workspace}:/workspace  # workspace rw (agent files)
+    read_only: true            # /app container FS is read-only
+    tmpfs:
+      - /tmp:size=128m         # writable temp for execute_python scripts
+    networks:
+      - tool-net               # internal only — no internet
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 512M
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:8001/healthz')\""]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
   frontend:
     build:
       context: .
       dockerfile: Dockerfile.frontend
       args:
-        # Docker internal: frontend → api service; override for external deployments
-        NEXT_PUBLIC_API_URL: "http://api:8000"
+        NEXT_PUBLIC_API_URL: "http://localhost:8000"
     ports:
       - "3000:3000"
     environment:
@@ -53,5 +134,23 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  # ── CLI (run standalone, no postgres needed) ──────────────────────────────
+  # docker compose run --rm cli
+  cli:
+    build:
+      context: .
+      dockerfile: Dockerfile.cli
+    volumes:
+      - .:/workspace
+    env_file: .env
+    environment:
+      WORKSPACE_ROOT: /workspace
+    profiles: ["cli"]   # only starts when explicitly requested
+
 volumes:
   pgdata:
+
+networks:
+  default: {}
+  tool-net:
+    internal: true  # no outbound internet — tool-service + worker only

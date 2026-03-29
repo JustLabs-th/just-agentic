@@ -32,6 +32,14 @@ fastapi>=0.115.0
 uvicorn[standard]>=0.30.0
 python-multipart>=0.0.9     # form data support
 
+# MCP — Model Context Protocol plugin system (optional, gracefully skipped if absent)
+langchain-mcp-adapters>=0.1.0
+
+# Redis + async worker queue (Phase 1 — Scalability)
+arq>=0.26
+redis[hiredis]>=5.0
+
 # Testing
 pytest>=7.0
 pytest-mock>=3.0
+pytest-asyncio>=0.21

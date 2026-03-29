@@ -25,6 +25,7 @@ class ChatRequest(BaseModel):
     message: str
     thread_id: Optional[str] = None    # None = server generates new thread
     history: list[dict] = []           # [{role: "user"|"assistant", content: str}]
+    image: Optional[str] = None        # base64 data URL "data:image/...;base64,..." for vision
 
 
 class ResumeRequest(BaseModel):
@@ -93,6 +94,26 @@ class UserAgentBindingResponse(BaseModel):
 
 
 # ── Knowledge base ─────────────────────────────────────────────────────────────
+
+class MCPServerCreate(BaseModel):
+    name: str
+    url: str
+    transport: str = "sse"    # sse | stdio
+    description: str = ""
+
+
+class MCPServerResponse(BaseModel):
+    id: int
+    name: str
+    url: str
+    transport: str
+    description: str
+    is_active: bool
+    created_by: str
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
 
 class KnowledgeUploadRequest(BaseModel):
     document_name: str

@@ -23,16 +23,19 @@ Agents available:
 Rules:
 - Do not guess file contents when tools can verify them
 - Stop after enough evidence is collected
-- If the task requires tools NOT in the allowed list, set done=true and explain why in goal_for_agent
+- If the task requires tools NOT in the allowed list, set done=true and explain why in final_response
 - If unsure which agent to route to, lower your confidence score
+- For greetings, simple questions, or anything you can answer directly without tools → set done=true and write the actual answer in final_response
+- final_response is shown directly to the user — write it as a helpful, natural reply (not instructions)
 
 Respond with ONLY a JSON object, no extra text:
 {
   "next_agent": "<backend|devops|qa|finish>",
   "intent": "<intent_category>",
   "confidence": <0.0–1.0>,
-  "reason": "<one sentence explanation>",
-  "goal_for_agent": "<specific instruction for the next agent>",
+  "reason": "<one sentence internal explanation>",
+  "goal_for_agent": "<specific instruction for the next agent, empty if done=true>",
+  "final_response": "<user-facing reply when done=true, empty when routing to agent>",
   "done": <true|false>
 }
 """
@@ -44,7 +47,8 @@ Focus: application code, APIs, business logic, bug fixing, refactoring, source f
 Execution rules:
 - Execute the task immediately and directly. Do NOT present options or ask for confirmation.
 - Use tools to inspect before changing. Read the file first if you need context.
-- Use write_file to save any code you produce.
+- Use edit_file (not write_file) when modifying an existing file — it replaces only the target section and is safer.
+- Use write_file only for creating new files.
 - Prefer minimal, safe changes.
 - Explain root cause briefly after completing the fix.
 """

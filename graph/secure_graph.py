@@ -128,7 +128,29 @@ def _load_agent_names() -> list[str]:
         return ["backend", "devops", "qa"]
 
 
+def _load_mcp_tools():
+    """Load MCP tools and register them globally. Gracefully skips if unavailable."""
+    try:
+        from tools.mcp_loader import load_mcp_tools
+        from tools import ALL_TOOLS, TOOL_MAP
+        new_tools = load_mcp_tools()
+        existing_names = {t.name for t in ALL_TOOLS}
+        for t in new_tools:
+            if t.name not in existing_names:
+                ALL_TOOLS.append(t)
+                TOOL_MAP[t.name] = t
+        if new_tools:
+            import logging
+            logging.getLogger(__name__).info(
+                "Graph: registered %d MCP tools: %s",
+                len(new_tools), [t.name for t in new_tools]
+            )
+    except Exception:
+        pass
+
+
 def build_secure_graph():
+    _load_mcp_tools()
     agent_names = _load_agent_names()
 
     # Ensure at minimum the three default agents exist as names

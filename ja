@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# ja — just-agentic CLI (thin client)
+# Install: sudo cp ja /usr/local/bin/ja && sudo chmod +x /usr/local/bin/ja
+# Usage:   cd /your/project && ja
+#
+# Config (set in shell profile or .env):
+#   JA_SERVER=https://your-company-server.com   (required in production)
+#   JA_TOKEN=eyJ...                             (optional: skip login prompt)
+
+IMAGE="${JA_IMAGE:-ghcr.io/justlabs-th/just-agentic-cli:latest}"
+
+# Server URL — IT sets this for the whole company
+JA_SERVER="${JA_SERVER:-http://localhost:8000}"
+
+exec docker run --rm -it \
+  -v "$(pwd):/workspace" \
+  -e JA_SERVER="$JA_SERVER" \
+  -e JA_TOKEN="${JA_TOKEN:-}" \
+  "$IMAGE"

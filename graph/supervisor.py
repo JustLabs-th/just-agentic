@@ -1,6 +1,7 @@
 import json
 import os
 from datetime import datetime, timezone
+from pathlib import Path
 
 from langchain_core.messages import HumanMessage
 from langgraph.graph import END
@@ -10,6 +11,22 @@ from graph.state import AgentState
 from llm.adapter import get_adapter
 
 MAX_ITERATIONS = int(os.getenv("MAX_ITERATIONS", "8"))
+
+
+def _load_project_context() -> str:
+    """Load CONTEXT.md or README.md from WORKSPACE_ROOT if present."""
+    workspace = os.getenv("WORKSPACE_ROOT", "")
+    if not workspace:
+        return ""
+    for filename in ("CONTEXT.md", "README.md"):
+        p = Path(workspace) / filename
+        if p.exists():
+            try:
+                content = p.read_text(encoding="utf-8")[:3000]
+                return f"--- Project context ({filename}) ---\n{content}\n---"
+            except Exception:
+                pass
+    return ""
 MAX_RETRIES_PER_AGENT = 2
 CONFIDENCE_THRESHOLD = float(os.getenv("CONFIDENCE_THRESHOLD", "0.55"))
 LOOP_WINDOW = 3
@@ -71,7 +88,12 @@ def supervisor_node(state: AgentState) -> AgentState:
 
     # ── Build context for supervisor LLM ──────────────────────────────────
     messages = state.get("messages", [])
-    context_parts = [
+    project_ctx = _load_project_context()
+    context_parts = []
+    if project_ctx:
+        context_parts.append(project_ctx)
+    context_parts += [
+        f"Workspace: {os.getenv('WORKSPACE_ROOT', '(not set)')}",
         f"User goal: {state.get('user_goal', '')}",
         f"User role: {state.get('user_role', 'unknown')}",
         f"Allowed tools: {state.get('allowed_tools') or '(none)'}",
@@ -162,7 +184,11 @@ def supervisor_node(state: AgentState) -> AgentState:
 
     if done:
         from langchain_core.messages import AIMessage as _AIMsg
-        final = decision.get("goal_for_agent", "") or decision.get("reason", "Task complete.")
+        # Prefer final_response (user-facing) over goal_for_agent (agent instruction)
+        final = (decision.get("final_response") or
+                 decision.get("goal_for_agent") or
+                 decision.get("reason") or
+                 "Task complete.")
         updates["final_answer"] = final
         # Inject as AIMessage so the SSE stream picks it up as a visible message
         updates["messages"] = list(state.get("messages", [])) + [_AIMsg(content=final)]
@@ -265,6 +291,7 @@ def _parse_decision(content: str, valid_agents: set[str]) -> dict:
             "confidence": confidence,
             "reason": str(data.get("reason", "")),
             "goal_for_agent": str(data.get("goal_for_agent", "")),
+            "final_response": str(data.get("final_response", "")),
             "done": done,
         }
     except (json.JSONDecodeError, AttributeError, ValueError):

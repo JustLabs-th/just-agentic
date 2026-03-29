@@ -17,6 +17,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from db import init_db
+from api.redis_client import init_redis, close_redis
 from api.routers import auth, agent
 from api.routers.admin import router as admin_router
 from api.routers.knowledge import router as knowledge_router
@@ -43,8 +44,14 @@ app.include_router(knowledge_router)
 
 # ── Lifecycle ─────────────────────────────────────────────────────────────────
 @app.on_event("startup")
-def on_startup():
+async def on_startup():
     init_db()
+    await init_redis()
+
+
+@app.on_event("shutdown")
+async def on_shutdown():
+    await close_redis()
 
 
 @app.get("/healthz", tags=["health"])

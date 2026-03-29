@@ -1,0 +1,15 @@
+[build-system]
+requires = ["setuptools>=42"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "just-agentic"
+version = "1.0.0"
+requires-python = ">=3.11"
+
+[project.scripts]
+ja = "main:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+exclude = ["tests*", "frontend*", "alembic*"]

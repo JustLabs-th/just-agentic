@@ -11,7 +11,7 @@ Usage in agents:
 from langchain_core.tools import BaseTool
 
 from tools.shell import run_shell, git_status
-from tools.file_ops import read_file, write_file, list_files, search_code, read_log
+from tools.file_ops import read_file, write_file, edit_file, list_files, search_code, read_log
 from tools.code_exec import execute_python, run_tests, get_env
 from tools.web_search import web_search
 from tools.db_query import query_db
@@ -27,6 +27,7 @@ ALL_TOOLS: list[BaseTool] = [
     # File operations
     read_file,
     write_file,
+    edit_file,
     list_files,
     search_code,
     read_log,

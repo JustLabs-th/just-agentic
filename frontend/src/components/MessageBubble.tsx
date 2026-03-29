@@ -12,8 +12,14 @@ export default function MessageBubble({ message, streaming }: Props) {
   if (isUser) {
     return (
       <div className="flex justify-end mb-4">
-        <div className="max-w-[75%] bg-zinc-800 border border-zinc-700 rounded-lg px-4 py-2.5">
-          <p className="text-zinc-100 text-sm whitespace-pre-wrap break-words">{message.content}</p>
+        <div className="max-w-[75%] bg-zinc-800 border border-zinc-700 rounded-lg px-4 py-2.5 space-y-2">
+          {message.image && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={message.image} alt="user attachment" className="max-h-48 rounded object-contain" />
+          )}
+          {message.content && (
+            <p className="text-zinc-100 text-sm whitespace-pre-wrap break-words">{message.content}</p>
+          )}
         </div>
       </div>
     );

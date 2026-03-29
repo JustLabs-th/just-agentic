@@ -1,0 +1,18 @@
+FROM python:3.12-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+WORKDIR /app
+
+# Minimal deps — no LangGraph, no DB drivers
+RUN pip install --no-cache-dir fastapi uvicorn[standard]
+
+COPY tool_service/ ./tool_service/
+
+# /workspace is mounted at runtime (read/write for tool execution)
+# /app is read-only at runtime (enforced in docker-compose)
+
+EXPOSE 8001
+
+CMD ["uvicorn", "tool_service.main:app", "--host", "0.0.0.0", "--port", "8001"]

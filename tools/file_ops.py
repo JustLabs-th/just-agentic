@@ -1,7 +1,7 @@
 import os
 import subprocess
 from langchain_core.tools import tool
-from tools._safety import check_path, log_tool_call
+from tools._safety import check_path, resolve_path, log_tool_call
 from tools._permission import permission_required, _clearance_ctx
 from security.output_classifier import check_output_clearance
 
@@ -14,9 +14,10 @@ def read_file(path: str) -> str:
         log_tool_call("read_file", {"path": path}, blocked)
         return blocked
     try:
-        with open(path, "r", encoding="utf-8") as f:
+        real = resolve_path(path)
+        with open(real, "r", encoding="utf-8") as f:
             content = f.read()
-        redacted = check_output_clearance(path, content, _clearance_ctx.get())
+        redacted = check_output_clearance(str(real), content, _clearance_ctx.get())
         if redacted:
             log_tool_call("read_file", {"path": path}, redacted)
             return redacted
@@ -41,12 +42,11 @@ def write_file(path: str, content: str) -> str:
         log_tool_call("write_file", {"path": path}, blocked)
         return blocked
     try:
-        parent = os.path.dirname(path)
-        if parent:
-            os.makedirs(parent, exist_ok=True)
-        with open(path, "w", encoding="utf-8") as f:
+        real = resolve_path(path)
+        real.parent.mkdir(parents=True, exist_ok=True)
+        with open(real, "w", encoding="utf-8") as f:
             f.write(content)
-        out = f"OK: Written {len(content)} chars to {path}"
+        out = f"OK: Written {len(content)} chars to {real}"
         log_tool_call("write_file", {"path": path, "bytes": len(content)}, out)
         return out
     except Exception as e:
@@ -63,11 +63,12 @@ def list_files(path: str = ".") -> str:
         log_tool_call("list_files", {"path": path}, blocked)
         return blocked
     try:
-        entries = os.listdir(path)
+        real = resolve_path(path)
+        entries = os.listdir(real)
         lines = []
         for entry in sorted(entries):
-            full = os.path.join(path, entry)
-            tag = "/" if os.path.isdir(full) else ""
+            full = real / entry
+            tag = "/" if full.is_dir() else ""
             lines.append(f"{entry}{tag}")
         out = "\n".join(lines) if lines else "(empty directory)"
         log_tool_call("list_files", {"path": path}, out)
@@ -79,6 +80,49 @@ def list_files(path: str = ".") -> str:
     except Exception as e:
         out = f"ERROR: {e}"
         log_tool_call("list_files", {"path": path}, out)
+        return out
+
+
+@tool
+@permission_required("write_file")
+def edit_file(path: str, old_string: str, new_string: str) -> str:
+    """Edit a file by replacing old_string with new_string.
+
+    Rules:
+    - old_string must match exactly once in the file (fails if 0 or 2+ matches)
+    - Preserves all content outside the matched region
+    - Use this instead of write_file when changing part of an existing file
+    """
+    blocked = check_path(path)
+    if blocked:
+        log_tool_call("edit_file", {"path": path}, blocked)
+        return blocked
+    try:
+        real = resolve_path(path)
+        with open(real, "r", encoding="utf-8") as f:
+            content = f.read()
+        count = content.count(old_string)
+        if count == 0:
+            out = f"ERROR: old_string not found in {real}"
+            log_tool_call("edit_file", {"path": path}, out)
+            return out
+        if count > 1:
+            out = f"ERROR: old_string matches {count} times in {real} — make it unique by including more context"
+            log_tool_call("edit_file", {"path": path}, out)
+            return out
+        updated = content.replace(old_string, new_string, 1)
+        with open(real, "w", encoding="utf-8") as f:
+            f.write(updated)
+        out = f"OK: Edited {real} ({len(old_string)} chars → {len(new_string)} chars)"
+        log_tool_call("edit_file", {"path": path}, out)
+        return out
+    except FileNotFoundError:
+        out = f"ERROR: File not found: {path}"
+        log_tool_call("edit_file", {"path": path}, out)
+        return out
+    except Exception as e:
+        out = f"ERROR: {e}"
+        log_tool_call("edit_file", {"path": path}, out)
         return out
 
 
@@ -118,10 +162,11 @@ def read_log(path: str, tail: int = 100) -> str:
         log_tool_call("read_log", {"path": path}, blocked)
         return blocked
     try:
-        with open(path, "r", encoding="utf-8", errors="replace") as f:
+        real = resolve_path(path)
+        with open(real, "r", encoding="utf-8", errors="replace") as f:
             lines = f.readlines()
         out = "".join(lines[-tail:])
-        redacted = check_output_clearance(path, out, _clearance_ctx.get())
+        redacted = check_output_clearance(str(real), out, _clearance_ctx.get())
         if redacted:
             log_tool_call("read_log", {"path": path}, redacted)
             return redacted

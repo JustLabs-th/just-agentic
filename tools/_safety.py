@@ -1,15 +1,35 @@
 """Shared safety helpers: path allowlist, command blocklist, tool logging."""
 
 import json
+import os
 from contextvars import ContextVar
 from pathlib import Path
 
-# Paths that tools are NOT allowed to read/write
+# Paths that tools are NEVER allowed to read/write regardless of workspace
 _BLOCKED_PATH_PREFIXES = [
     "/etc/shadow", "/etc/passwd", "/etc/sudoers",
     "/sys", "/proc", "/dev",
     "/private/etc",
 ]
+
+
+def get_workspace() -> Path | None:
+    """Return the workspace root if configured, else None (unrestricted)."""
+    ws = os.getenv("WORKSPACE_ROOT", "").strip()
+    return Path(ws).resolve() if ws and ws != "/absolute/path/to/your/project" else None
+
+
+def resolve_path(path: str) -> Path:
+    """Resolve a path: if relative, anchor to WORKSPACE_ROOT (or cwd).
+    Absolute paths are used as-is.
+    """
+    p = Path(path)
+    if p.is_absolute():
+        return p.resolve()
+    workspace = get_workspace()
+    if workspace:
+        return (workspace / p).resolve()
+    return p.resolve()
 
 # Shell command patterns that are never allowed
 _BLOCKED_COMMAND_PATTERNS = [
@@ -33,11 +53,26 @@ def set_tool_context(user_id: str, thread_id: str = "") -> None:
 
 
 def check_path(path: str) -> str | None:
-    """Return an error string if path is blocked, else None."""
-    resolved = str(Path(path).resolve())
+    """Return an error string if path is blocked, else None.
+
+    Rules:
+    1. Always block system paths (shadow, proc, etc.)
+    2. If WORKSPACE_ROOT is set, block paths outside the workspace
+    """
+    resolved = resolve_path(path)
+    resolved_str = str(resolved)
+
     for blocked in _BLOCKED_PATH_PREFIXES:
-        if resolved.startswith(blocked):
+        if resolved_str.startswith(blocked):
             return f"BLOCKED: access to '{path}' is not allowed"
+
+    workspace = get_workspace()
+    if workspace:
+        try:
+            resolved.relative_to(workspace)
+        except ValueError:
+            return f"BLOCKED: '{path}' is outside the workspace ({workspace})"
+
     return None
 
 

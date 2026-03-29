@@ -1,0 +1,16 @@
+FROM python:3.12-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+WORKDIR /app
+
+# Only needs minimal deps — no LangGraph, no DB, just HTTP + SSE client
+RUN pip install --no-cache-dir requests sseclient-py python-dotenv PyJWT
+
+COPY main_client.py ./
+
+# /workspace is mounted from the host at runtime
+WORKDIR /workspace
+
+ENTRYPOINT ["python", "/app/main_client.py"]

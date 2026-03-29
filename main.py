@@ -14,6 +14,10 @@ from langgraph.types import Command
 
 load_dotenv()
 
+# Default workspace = directory where user launched the CLI (like Claude Code)
+if not os.getenv("WORKSPACE_ROOT") or os.getenv("WORKSPACE_ROOT") == "/absolute/path/to/your/project":
+    os.environ["WORKSPACE_ROOT"] = os.getcwd()
+
 if not os.getenv("OPENAI_API_KEY") and os.getenv("LLM_PROVIDER", "openai") == "openai":
     print("ERROR: OPENAI_API_KEY not set. Copy .env.example → .env and add your key.")
     sys.exit(1)
@@ -45,18 +49,40 @@ def _ask_credentials() -> tuple[str, str, str, str]:
     return user_id, role, department, ""
 
 
-def _print_new_ai_messages(messages: list, since: int) -> int:
-    for msg in messages[since:]:
-        if isinstance(msg, AIMessage) and msg.content:
-            content = msg.content
-            if isinstance(content, list):
-                content = " ".join(
-                    p.get("text", "") if isinstance(p, dict) else str(p)
-                    for p in content
-                )
-            if content.strip():
-                print(f"\n{content}")
-    return len(messages)
+# ── Spinner ───────────────────────────────────────────────────────────────────
+
+import threading
+import itertools
+import time as _time
+
+class _Spinner:
+    """Shows a thinking spinner until stopped."""
+    _FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
+
+    def __init__(self, label: str = "Thinking"):
+        self._label = label
+        self._stop_event = threading.Event()
+        self._thread = threading.Thread(target=self._spin, daemon=True)
+
+    def _spin(self):
+        for frame in itertools.cycle(self._FRAMES):
+            if self._stop_event.is_set():
+                break
+            print(f"\r  {frame} {self._label}...", end="", flush=True)
+            _time.sleep(0.08)
+        # clear spinner line
+        print(f"\r{' ' * (len(self._label) + 16)}\r", end="", flush=True)
+
+    def start(self):
+        self._thread.start()
+        return self
+
+    def stop(self):
+        self._stop_event.set()
+        self._thread.join()
+
+    def update(self, label: str):
+        self._label = label
 
 
 def _handle_interrupt(payload: dict) -> bool:
@@ -82,32 +108,85 @@ def _handle_interrupt(payload: dict) -> bool:
 
 
 def _stream_task(app, state_or_cmd, config: dict, msg_count: int) -> tuple[list, int]:
-    """Stream events and return (final_messages, msg_count)."""
-    final_msgs = []
-    current_node = None
+    """
+    Stream with token-level output.
+    Uses stream_mode=["values","messages"] so we get:
+      - ("messages", (chunk, metadata)) for token streaming
+      - ("values", state_snapshot) for state/routing updates
+    """
+    final_msgs: list = []
+    current_node: str | None = None
+    streaming_msg_id: str | None = None   # track which msg we're currently printing
+    spinner = _Spinner("Thinking").start()
+    spinner_active = True
 
-    for event in app.stream(state_or_cmd, config, stream_mode="values"):
-        s = event
-        messages = s.get("messages", [])
-        final_msgs = messages
+    def _stop_spinner():
+        nonlocal spinner_active
+        if spinner_active:
+            spinner.stop()
+            spinner_active = False
 
-        if s.get("status") == "permission_denied":
-            err = s.get("error", "")
-            if err != "user_rejected":          # user_rejected already printed
-                print(f"\n  ⛔ PERMISSION DENIED: {err}")
-            break
+    try:
+        for event_type, payload in app.stream(
+            state_or_cmd, config, stream_mode=["values", "messages"]
+        ):
+            if event_type == "messages":
+                chunk, _ = payload
+                # Only stream AIMessage tokens (not ToolMessage / HumanMessage)
+                if isinstance(chunk, AIMessage) and chunk.content:
+                    content = chunk.content
+                    if isinstance(content, list):
+                        content = "".join(
+                            p.get("text", "") if isinstance(p, dict) else str(p)
+                            for p in content
+                        )
+                    if content:
+                        _stop_spinner()
+                        msg_id = getattr(chunk, "id", None)
+                        if msg_id and msg_id != streaming_msg_id:
+                            # New message — newline prefix
+                            if streaming_msg_id is not None:
+                                print()   # end previous message line
+                            print()
+                            streaming_msg_id = msg_id
+                        print(content, end="", flush=True)
 
-        active = s.get("current_agent", "")
-        if active and active != current_node and active not in ("supervisor",):
-            confidence = s.get("confidence")
-            intent     = s.get("intent", "")
-            label = f"→ {active.upper()}"
-            if confidence is not None:
-                label += f"  [{intent}  {confidence:.0%}]"
-            print(f"\n[{label}]")
-            current_node = active
+            elif event_type == "values":
+                s = payload
+                messages = s.get("messages", [])
+                final_msgs = messages
 
-        msg_count = _print_new_ai_messages(messages, msg_count)
+                if s.get("status") == "permission_denied":
+                    _stop_spinner()
+                    err = s.get("error", "")
+                    if err != "user_rejected":
+                        print(f"\n  ⛔ PERMISSION DENIED: {err}")
+                    return final_msgs, len(messages)
+
+                active = s.get("current_agent", "")
+                if active and active != current_node:
+                    if active not in ("supervisor",):
+                        _stop_spinner()
+                        confidence = s.get("confidence")
+                        intent     = s.get("intent", "")
+                        label = f"→ {active.upper()}"
+                        if confidence is not None:
+                            label += f"  [{intent}  {confidence:.0%}]"
+                        print(f"\n[{label}]")
+                        # restart spinner for this agent's thinking
+                        spinner_active = True
+                        spinner = _Spinner(f"{active.capitalize()} thinking").start()
+                    else:
+                        spinner.update("Routing")
+                    current_node = active
+
+                # Update msg_count (suppress duplicate full-message prints)
+                msg_count = len(messages)
+
+    finally:
+        _stop_spinner()
+        if streaming_msg_id is not None:
+            print()  # newline after streamed content
 
     return final_msgs, msg_count
 
@@ -183,8 +262,9 @@ def run_task(task: str, app, history: list, user_id: str, role: str,
 def main():
     init_db()
 
+    workspace = os.environ["WORKSPACE_ROOT"]
     print("just-agentic — Secure Multi-Agent Team")
-    print("Agents: Supervisor | Backend | DevOps | QA")
+    print(f"Workspace : {workspace}")
     print("Type 'exit' to quit, 'whoami' to check role.\n")
 
     user_id, role, department, jwt_token = _ask_credentials()

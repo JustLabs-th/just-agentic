@@ -21,7 +21,11 @@ env/
 
 # Claude local overrides
 .claude/settings.local.json
+.claude/worktrees/
 CLAUDE.local.md
+
+# Local env overrides
+frontend/.env.local
 
 # IDE
 .vscode/

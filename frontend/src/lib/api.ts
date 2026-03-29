@@ -1,6 +1,13 @@
 import type { LoginResponse, SSEEvent, ChatMessage } from "./types";
 
-const API_BASE = "";  // rewrites handle /api/* → FastAPI
+const API_BASE = "";  // rewrites handle /api/* → FastAPI (non-streaming)
+
+// SSE endpoints must bypass the Next.js rewrite proxy because it buffers the
+// entire response body before forwarding — killing streaming. Call FastAPI directly.
+const SSE_BASE =
+  typeof window !== "undefined"
+    ? (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000")
+    : "http://localhost:8000";
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
 
@@ -68,6 +75,7 @@ async function* readSSE(
 export interface StreamCallbacks {
   onThreadId?: (threadId: string) => void;
   onAgentSwitch?: (agent: string, intent: string, confidence: number) => void;
+  onToolCall?: (tool: string, input: Record<string, unknown>, agent: string) => void;
   onMessage?: (content: string, agent?: string) => void;
   onApprovalRequired?: (threadId: string, agent: string, intent: string, action: string) => void;
   onPermissionDenied?: (error: string) => void;
@@ -80,20 +88,21 @@ export async function streamChat(
   message: string,
   history: ChatMessage[],
   callbacks: StreamCallbacks,
-  threadId?: string
+  threadId?: string,
+  image?: string,
 ): Promise<void> {
   const historyPayload = history.map((m) => ({
     role: m.role,
     content: m.content,
   }));
 
-  const response = await fetch(`${API_BASE}/api/agent/chat`, {
+  const response = await fetch(`${SSE_BASE}/api/agent/chat`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${token}`,
     },
-    body: JSON.stringify({ message, history: historyPayload, thread_id: threadId }),
+    body: JSON.stringify({ message, history: historyPayload, thread_id: threadId, image }),
   });
 
   if (!response.ok) {
@@ -115,6 +124,10 @@ export async function streamChat(
       case "agent_switch":
         currentAgent = event.agent;
         callbacks.onAgentSwitch?.(event.agent!, event.intent ?? "", event.confidence ?? 0);
+        break;
+
+      case "tool_call":
+        callbacks.onToolCall?.(event.tool!, event.input ?? {}, event.agent ?? currentAgent ?? "");
         break;
 
       case "message":
@@ -151,7 +164,7 @@ export async function streamResume(
   approved: boolean,
   callbacks: StreamCallbacks
 ): Promise<void> {
-  const response = await fetch(`${API_BASE}/api/agent/resume/${threadId}`, {
+  const response = await fetch(`${SSE_BASE}/api/agent/resume/${threadId}`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",

@@ -158,6 +158,24 @@ class KnowledgeChunk(Base):
         )
 
 
+# ── MCP Servers ───────────────────────────────────────────────────────────────
+
+class MCPServer(Base):
+    """External MCP tool server registered by an admin."""
+    __tablename__ = "mcp_servers"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
+    url: Mapped[str] = mapped_column(Text, nullable=False)       # e.g. http://localhost:3001/sse
+    transport: Mapped[str] = mapped_column(String(16), nullable=False, default="sse")  # sse | stdio
+    description: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    created_by: Mapped[str] = mapped_column(String(128), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
 # ── LOGS (append-only) ────────────────────────────────────────────────────────
 
 class AuditRecord(Base):

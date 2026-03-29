@@ -18,8 +18,8 @@ _ANALYZE_TOOLS: list[str] = _ANALYST_TOOLS + [
     "run_shell", "execute_python", "run_tests", "query_db",
 ]
 
-# admin adds file write
-_WRITE_TOOLS: list[str] = _ANALYZE_TOOLS + ["write_file"]
+# admin adds file write + edit
+_WRITE_TOOLS: list[str] = _ANALYZE_TOOLS + ["write_file", "edit_file"]
 
 # ── Default seed data ──────────────────────────────────────────────────────────
 
@@ -41,7 +41,7 @@ _DEFAULT_DEPARTMENTS = [
     {
         "name": "engineering", "max_clearance": "CONFIDENTIAL",
         "permitted_tools": [
-            "read_file", "write_file", "list_files", "search_code",
+            "read_file", "write_file", "edit_file", "list_files", "search_code",
             "run_shell", "git_status", "execute_python", "run_tests",
             "web_search", "scrape_page", "scan_secrets", "query_db",
             "search_knowledge",
@@ -50,7 +50,7 @@ _DEFAULT_DEPARTMENTS = [
     {
         "name": "devops", "max_clearance": "CONFIDENTIAL",
         "permitted_tools": [
-            "read_file", "write_file", "list_files", "read_log",
+            "read_file", "write_file", "edit_file", "list_files", "read_log",
             "run_shell", "git_status", "get_env", "web_search",
             "scrape_page", "query_db", "search_knowledge",
         ],
@@ -82,7 +82,7 @@ _DEFAULT_DEPARTMENTS = [
     {
         "name": "developer", "max_clearance": "CONFIDENTIAL",
         "permitted_tools": [
-            "read_file", "write_file", "list_files", "search_code", "read_log",
+            "read_file", "write_file", "edit_file", "list_files", "search_code", "read_log",
             "run_shell", "git_status", "execute_python", "run_tests", "get_env",
             "web_search", "search_knowledge",
         ],
@@ -96,7 +96,7 @@ _DEFAULT_AGENTS = [
         "display_name": "Backend Agent",
         "system_prompt": "You are the Backend Agent.\n\nFocus: application code, APIs, business logic, bug fixing, refactoring, source files.\n\nExecution rules:\n- Execute the task immediately and directly. Do NOT present options or ask for confirmation.\n- Use tools to inspect before changing. Read the file first if you need context.\n- Use write_file to save any code you produce.\n- Prefer minimal, safe changes.\n- Explain root cause briefly after completing the fix.",
         "allowed_tools": [
-            "read_file", "write_file", "list_files", "search_code",
+            "read_file", "write_file", "edit_file", "list_files", "search_code",
             "run_shell", "git_status", "execute_python", "run_tests",
             "web_search", "scrape_page", "scan_secrets", "query_db",
         ],
@@ -135,7 +135,7 @@ _DEFAULT_AGENTS = [
             "When you don't have a tool needed for the task, explain clearly what permission is required and stop."
         ),
         "allowed_tools": [
-            "read_file", "write_file", "list_files", "search_code", "read_log",
+            "read_file", "write_file", "edit_file", "list_files", "search_code", "read_log",
             "run_shell", "git_status", "execute_python", "run_tests", "get_env",
             "web_search", "search_knowledge",
         ],

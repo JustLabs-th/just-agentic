@@ -1,9 +1,9 @@
-import subprocess
-import tempfile
 import os
 from langchain_core.tools import tool
-from tools._safety import log_tool_call
+from tools._safety import log_tool_call, get_workspace
 from tools._permission import permission_required
+from tools._tool_client import call as tool_service_call, is_enabled as tool_service_enabled
+from tool_service.executor import run_python as sandboxed_run_python, run_command as sandboxed_run
 
 
 @tool
@@ -11,37 +11,15 @@ from tools._permission import permission_required
 def execute_python(code: str) -> str:
     """Execute a Python code snippet and return the output.
 
-    Runs in an isolated temp file. Use print() to see output.
+    Runs in an isolated sandbox. Use print() to see output.
     Timeout: 30 seconds.
     """
-    tmp_path = None
-    try:
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".py", delete=False, encoding="utf-8"
-        ) as f:
-            f.write(code)
-            tmp_path = f.name
-
-        result = subprocess.run(
-            ["python3", tmp_path],
-            capture_output=True,
-            text=True,
-            timeout=30,
-        )
-        output = ""
-        if result.stdout:
-            output += f"OUTPUT:\n{result.stdout}"
-        if result.stderr:
-            output += f"\nERROR:\n{result.stderr}"
-        output = output or "(no output)"
-        output += f"\nEXIT CODE: {result.returncode}"
-    except subprocess.TimeoutExpired:
-        output = "ERROR: Code execution timed out after 30 seconds"
-    except Exception as e:
-        output = f"ERROR: {e}"
-    finally:
-        if tmp_path:
-            os.unlink(tmp_path)
+    # Option B: route through isolated Tool Service container
+    if tool_service_enabled():
+        output = tool_service_call("execute_python", {"code": code}, timeout=30)
+    else:
+        # Option A: run locally with OS resource limits
+        output = sandboxed_run_python(code, timeout=30)
 
     log_tool_call("execute_python", {"code_snippet": code[:100]}, output)
     return output
@@ -55,25 +33,15 @@ def run_tests(command: str = "pytest -q") -> str:
     Examples: "pytest -q", "go test ./...", "npm test"
     Timeout: 120 seconds.
     """
-    try:
-        result = subprocess.run(
-            command,
-            shell=True,
-            capture_output=True,
-            text=True,
-            timeout=120,
-        )
-        output = ""
-        if result.stdout:
-            output += f"STDOUT:\n{result.stdout}"
-        if result.stderr:
-            output += f"\nSTDERR:\n{result.stderr}"
-        output = output or "(no output)"
-        output += f"\nEXIT CODE: {result.returncode}"
-    except subprocess.TimeoutExpired:
-        output = "ERROR: Tests timed out after 120 seconds"
-    except Exception as e:
-        output = f"ERROR: {e}"
+    workspace = get_workspace()
+    ws_str = str(workspace) if workspace else None
+
+    # Option B: route through isolated Tool Service container
+    if tool_service_enabled():
+        output = tool_service_call("run_tests", {"command": command}, ws_str, timeout=120)
+    else:
+        # Option A: run locally with OS resource limits
+        output = sandboxed_run(command, ws_str, timeout=120)
 
     log_tool_call("run_tests", {"command": command}, output)
     return output
