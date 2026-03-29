@@ -1,22 +1,23 @@
 "use client";
 
 import { useState } from "react";
-import { loginJwt, loginDev } from "@/lib/api";
+import { loginJwt, loginDev, loginCredentials } from "@/lib/api";
 import type { UserSession } from "@/lib/types";
 
 interface Props {
   onLogin: (session: UserSession) => void;
 }
 
-type Mode = "dev" | "jwt";
+type Mode = "credentials" | "jwt" | "dev";
 
 const ROLES = ["viewer", "analyst", "manager", "admin"];
 const DEPARTMENTS = ["engineering", "devops", "qa", "data", "security", "all"];
 
 export default function LoginForm({ onLogin }: Props) {
-  const [mode, setMode] = useState<Mode>("dev");
+  const [mode, setMode] = useState<Mode>("credentials");
   const [token, setToken] = useState("");
   const [userId, setUserId] = useState("");
+  const [password, setPassword] = useState("");
   const [role, setRole] = useState("analyst");
   const [department, setDepartment] = useState("engineering");
   const [error, setError] = useState("");
@@ -28,7 +29,10 @@ export default function LoginForm({ onLogin }: Props) {
     setLoading(true);
     try {
       let session: UserSession;
-      if (mode === "jwt") {
+      if (mode === "credentials") {
+        if (!userId.trim() || !password) throw new Error("Username and password are required");
+        session = await loginCredentials(userId.trim(), password);
+      } else if (mode === "jwt") {
         session = await loginJwt(token.trim());
       } else {
         session = await loginDev(userId.trim() || "anonymous", role, department);
@@ -53,24 +57,50 @@ export default function LoginForm({ onLogin }: Props) {
 
         {/* Mode toggle */}
         <div className="flex border border-zinc-700 rounded-lg overflow-hidden mb-6">
-          {(["dev", "jwt"] as Mode[]).map((m) => (
+          {(["credentials", "jwt", "dev"] as Mode[]).map((m) => (
             <button
               key={m}
               type="button"
               onClick={() => setMode(m)}
-              className={`flex-1 py-2 text-sm font-medium transition-colors ${
+              className={`flex-1 py-2 text-xs font-medium transition-colors ${
                 mode === m
                   ? "bg-zinc-700 text-zinc-100"
                   : "text-zinc-500 hover:text-zinc-300"
               }`}
             >
-              {m === "dev" ? "Dev credentials" : "JWT token"}
+              {m === "credentials" ? "Password" : m === "jwt" ? "JWT" : "Dev"}
             </button>
           ))}
         </div>
 
         <form onSubmit={submit} className="space-y-4">
-          {mode === "jwt" ? (
+          {mode === "credentials" && (
+            <>
+              <div>
+                <label className="block text-xs text-zinc-500 mb-1">Username</label>
+                <input
+                  type="text"
+                  value={userId}
+                  onChange={(e) => setUserId(e.target.value)}
+                  placeholder="your username"
+                  autoFocus
+                  className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-zinc-500"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-zinc-500 mb-1">Password</label>
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="••••••••"
+                  className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-zinc-500"
+                />
+              </div>
+            </>
+          )}
+
+          {mode === "jwt" && (
             <div>
               <label className="block text-xs text-zinc-500 mb-1">Bearer token</label>
               <textarea
@@ -81,7 +111,9 @@ export default function LoginForm({ onLogin }: Props) {
                 className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600 resize-none focus:outline-none focus:border-zinc-500"
               />
             </div>
-          ) : (
+          )}
+
+          {mode === "dev" && (
             <>
               <div>
                 <label className="block text-xs text-zinc-500 mb-1">User ID</label>
@@ -93,7 +125,6 @@ export default function LoginForm({ onLogin }: Props) {
                   className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-zinc-500"
                 />
               </div>
-
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs text-zinc-500 mb-1">Role</label>
@@ -102,12 +133,9 @@ export default function LoginForm({ onLogin }: Props) {
                     onChange={(e) => setRole(e.target.value)}
                     className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:border-zinc-500"
                   >
-                    {ROLES.map((r) => (
-                      <option key={r} value={r}>{r}</option>
-                    ))}
+                    {ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
                   </select>
                 </div>
-
                 <div>
                   <label className="block text-xs text-zinc-500 mb-1">Department</label>
                   <select
@@ -115,9 +143,7 @@ export default function LoginForm({ onLogin }: Props) {
                     onChange={(e) => setDepartment(e.target.value)}
                     className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:border-zinc-500"
                   >
-                    {DEPARTMENTS.map((d) => (
-                      <option key={d} value={d}>{d}</option>
-                    ))}
+                    {DEPARTMENTS.map((d) => <option key={d} value={d}>{d}</option>)}
                   </select>
                 </div>
               </div>
@@ -135,16 +161,9 @@ export default function LoginForm({ onLogin }: Props) {
             disabled={loading || (mode === "jwt" && !token.trim())}
             className="w-full bg-zinc-700 hover:bg-zinc-600 disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold py-2.5 rounded-lg transition-colors text-sm"
           >
-            {loading ? "Authenticating…" : "Enter"}
+            {loading ? "Authenticating…" : "Sign in"}
           </button>
         </form>
-
-        {/* Role/clearance reference */}
-        <div className="mt-6 text-xs text-zinc-600 space-y-1">
-          <p className="text-zinc-700 font-medium">Clearance levels:</p>
-          <p>viewer → PUBLIC   · analyst → INTERNAL</p>
-          <p>manager → CONF.   · admin → SECRET</p>
-        </div>
       </div>
     </div>
   );

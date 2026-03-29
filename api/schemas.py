@@ -5,11 +5,17 @@ from typing import Optional
 
 
 class LoginRequest(BaseModel):
-    mode: str  # "jwt" | "dev"
+    mode: str  # "jwt" | "dev" | "credentials"
     token: Optional[str] = None        # JWT mode
-    user_id: Optional[str] = None      # dev mode
-    role: Optional[str] = None
-    department: Optional[str] = None
+    user_id: Optional[str] = None      # dev / credentials mode
+    password: Optional[str] = None     # credentials mode
+    role: Optional[str] = None         # dev mode
+    department: Optional[str] = None   # dev mode
+
+
+class SetupRequest(BaseModel):
+    user_id: str
+    password: str
 
 
 class LoginResponse(BaseModel):
@@ -132,3 +138,31 @@ class KnowledgeDocumentResponse(BaseModel):
     source_url: Optional[str]
     created_by: str
     created_at: datetime
+
+
+# ── Admin: User management ────────────────────────────────────────────────────
+
+class UserCreate(BaseModel):
+    user_id: str
+    password: str
+    role: str
+    department: str
+
+
+class UserUpdate(BaseModel):
+    role: Optional[str] = None
+    department: Optional[str] = None
+    is_active: Optional[bool] = None
+    password: Optional[str] = None
+
+
+class UserResponse(BaseModel):
+    id: int
+    user_id: str
+    role: str
+    department: str
+    clearance_level: int
+    is_active: bool
+    created_at: datetime
+
+    model_config = {"from_attributes": True}

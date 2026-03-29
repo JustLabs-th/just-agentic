@@ -39,6 +39,15 @@ interface KnowledgeDoc {
   department: string | null;
 }
 
+interface UserEntry {
+  id: number;
+  user_id: string;
+  role: string;
+  department: string;
+  clearance_level: number;
+  is_active: boolean;
+}
+
 // ── helpers ───────────────────────────────────────────────────────────────────
 
 function authHeaders(token: string) {
@@ -63,7 +72,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 export default function AdminPage() {
   const router = useRouter();
   const [session, setSession] = useState<Session | null>(null);
-  const [tab, setTab] = useState<"agents" | "mcp" | "knowledge">("agents");
+  const [tab, setTab] = useState<"agents" | "mcp" | "knowledge" | "users">("agents");
 
   // Agents state
   const [agents, setAgents] = useState<AgentDef[]>([]);
@@ -80,6 +89,11 @@ export default function AdminPage() {
   const [newDoc, setNewDoc] = useState({ document_name: "", content: "", clearance_level: 1, department: "" });
   const [docMsg, setDocMsg] = useState("");
 
+  // Users state
+  const [users, setUsers] = useState<UserEntry[]>([]);
+  const [newUser, setNewUser] = useState({ user_id: "", password: "", role: "analyst", department: "engineering" });
+  const [userMsg, setUserMsg] = useState("");
+
   useEffect(() => {
     const raw = localStorage.getItem("ja_session");
     if (!raw) { router.push("/"); return; }
@@ -93,6 +107,7 @@ export default function AdminPage() {
     fetchAgents();
     fetchMcp();
     fetchDocs();
+    fetchUsers();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session]);
 
@@ -107,6 +122,10 @@ export default function AdminPage() {
   async function fetchDocs() {
     const res = await fetch("/api/admin/knowledge", { headers: authHeaders(session!.access_token) });
     if (res.ok) setDocs(await res.json());
+  }
+  async function fetchUsers() {
+    const res = await fetch("/api/admin/users", { headers: authHeaders(session!.access_token) });
+    if (res.ok) setUsers(await res.json());
   }
 
   // ── Agent CRUD ──────────────────────────────────────────────────────────────
@@ -175,6 +194,34 @@ export default function AdminPage() {
     fetchMcp();
   }
 
+  // ── User CRUD ───────────────────────────────────────────────────────────────
+
+  async function createUser() {
+    setUserMsg("");
+    const res = await fetch("/api/admin/users", {
+      method: "POST",
+      headers: authHeaders(session!.access_token),
+      body: JSON.stringify(newUser),
+    });
+    if (res.ok) {
+      setUserMsg("User created ✓");
+      setNewUser({ user_id: "", password: "", role: "analyst", department: "engineering" });
+      fetchUsers();
+    } else {
+      const e = await res.json();
+      setUserMsg(`Error: ${e.detail}`);
+    }
+  }
+
+  async function toggleUser(user_id: string, is_active: boolean) {
+    await fetch(`/api/admin/users/${user_id}`, {
+      method: "PATCH",
+      headers: authHeaders(session!.access_token),
+      body: JSON.stringify({ is_active: !is_active }),
+    });
+    fetchUsers();
+  }
+
   // ── Knowledge CRUD ──────────────────────────────────────────────────────────
 
   async function uploadDoc() {
@@ -204,7 +251,7 @@ export default function AdminPage() {
 
   if (!session) return null;
 
-  const tabs = ["agents", "mcp", "knowledge"] as const;
+  const tabs = ["agents", "users", "mcp", "knowledge"] as const;
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100 font-mono">
@@ -319,6 +366,53 @@ export default function AdminPage() {
               <div className="flex items-center gap-3">
                 <button onClick={createMcp} className="btn-primary">Register</button>
                 {mcpMsg && <span className="text-xs text-zinc-500">{mcpMsg}</span>}
+              </div>
+            </div>
+          </Section>
+        )}
+
+        {/* ── Users tab ── */}
+        {tab === "users" && (
+          <Section title="Users">
+            <div className="space-y-2 mb-6">
+              {users.length === 0 && <p className="text-zinc-600 text-sm">No users found.</p>}
+              {users.map((u) => (
+                <div key={u.id} className="flex items-center justify-between px-4 py-2 rounded border border-zinc-800 bg-zinc-900">
+                  <div>
+                    <span className={`text-sm font-semibold ${u.is_active ? "text-zinc-200" : "text-zinc-600 line-through"}`}>{u.user_id}</span>
+                    <span className="ml-2 text-zinc-500 text-xs">{u.role}</span>
+                    <span className="ml-1 text-zinc-600 text-xs">· {u.department}</span>
+                    <span className="ml-1 text-zinc-700 text-xs">· L{u.clearance_level}</span>
+                  </div>
+                  <button
+                    onClick={() => toggleUser(u.user_id, u.is_active)}
+                    className={`text-xs px-2 py-0.5 rounded border transition-colors ${
+                      u.is_active
+                        ? "border-zinc-700 text-zinc-500 hover:text-red-400 hover:border-red-800"
+                        : "border-zinc-700 text-zinc-600 hover:text-green-400 hover:border-green-800"
+                    }`}
+                  >
+                    {u.is_active ? "disable" : "enable"}
+                  </button>
+                </div>
+              ))}
+            </div>
+
+            <div className="border border-zinc-800 rounded p-4 space-y-3">
+              <p className="text-zinc-500 text-xs uppercase tracking-wider">Create User</p>
+              <div className="grid grid-cols-2 gap-3">
+                <input value={newUser.user_id} onChange={(e) => setNewUser({ ...newUser, user_id: e.target.value })} placeholder="username" className="input-field" />
+                <input type="password" value={newUser.password} onChange={(e) => setNewUser({ ...newUser, password: e.target.value })} placeholder="password (min 8)" className="input-field" />
+                <select value={newUser.role} onChange={(e) => setNewUser({ ...newUser, role: e.target.value })} className="input-field">
+                  {["viewer", "analyst", "manager", "admin"].map((r) => <option key={r} value={r}>{r}</option>)}
+                </select>
+                <select value={newUser.department} onChange={(e) => setNewUser({ ...newUser, department: e.target.value })} className="input-field">
+                  {["engineering", "devops", "qa", "data", "security", "developer", "all"].map((d) => <option key={d} value={d}>{d}</option>)}
+                </select>
+              </div>
+              <div className="flex items-center gap-3">
+                <button onClick={createUser} className="btn-primary">Create User</button>
+                {userMsg && <span className="text-xs text-zinc-500">{userMsg}</span>}
               </div>
             </div>
           </Section>

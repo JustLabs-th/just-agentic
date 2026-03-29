@@ -35,6 +35,9 @@ python-multipart>=0.0.9     # form data support
 # MCP — Model Context Protocol plugin system (optional, gracefully skipped if absent)
 langchain-mcp-adapters>=0.1.0
 
+# Password hashing
+passlib[bcrypt]>=1.7
+
 # Redis + async worker queue (Phase 1 — Scalability)
 arq>=0.26
 redis[hiredis]>=5.0

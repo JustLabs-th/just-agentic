@@ -41,6 +41,44 @@ export async function loginDev(
   return res.json();
 }
 
+export async function loginCredentials(
+  user_id: string,
+  password: string
+): Promise<LoginResponse> {
+  const res = await fetch(`${API_BASE}/api/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ mode: "credentials", user_id, password }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(err.detail ?? "Login failed");
+  }
+  return res.json();
+}
+
+export async function checkSetup(): Promise<{ needs_setup: boolean }> {
+  const res = await fetch(`${API_BASE}/api/auth/setup`);
+  if (!res.ok) throw new Error("Could not reach server");
+  return res.json();
+}
+
+export async function runSetup(
+  user_id: string,
+  password: string
+): Promise<LoginResponse> {
+  const res = await fetch(`${API_BASE}/api/auth/setup`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ user_id, password }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(err.detail ?? "Setup failed");
+  }
+  return res.json();
+}
+
 // ── Streaming helpers ─────────────────────────────────────────────────────────
 
 async function* readSSE(
