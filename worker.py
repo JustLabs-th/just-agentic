@@ -150,11 +150,19 @@ async def run_graph_job(
     history: list,
     user_ctx: dict,
     image: str | None = None,
+    local_exec: bool = False,
 ) -> None:
     """
     ARQ job: build AgentState, run graph, publish SSE events to Redis Stream.
     Enqueued by POST /api/agent/chat.
+
+    local_exec=True: tools are delegated to the CLI client via Redis round-trip
+    instead of running in tool-service or locally.
     """
+    if local_exec:
+        from tools._local_exec import enable as _enable_local_exec
+        _enable_local_exec(thread_id)
+
     stream_key = f"sse:{thread_id}"
     config = {"configurable": {"thread_id": thread_id}}
     state = build_initial_state(message, history, user_ctx, image)

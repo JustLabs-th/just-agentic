@@ -32,6 +32,12 @@ class ChatRequest(BaseModel):
     thread_id: Optional[str] = None    # None = server generates new thread
     history: list[dict] = []           # [{role: "user"|"assistant", content: str}]
     image: Optional[str] = None        # base64 data URL "data:image/...;base64,..." for vision
+    local_exec: bool = False           # True = delegate tool execution to CLI client
+
+
+class ToolResultRequest(BaseModel):
+    call_id: str
+    output: str
 
 
 class ResumeRequest(BaseModel):

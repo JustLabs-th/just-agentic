@@ -5,8 +5,15 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
+# Node.js LTS — required for npx/npm/node tool execution in /workspace
+RUN apt-get update && \
+    apt-get install -y curl git && \
+    curl -fsSL https://deb.nodesource.com/setup_lts.x | bash - && \
+    apt-get install -y nodejs && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
+
 # Only needs minimal deps — no LangGraph, no DB, just HTTP + SSE client
-RUN pip install --no-cache-dir requests sseclient-py python-dotenv PyJWT
+RUN pip install --no-cache-dir requests python-dotenv PyJWT
 
 COPY main_client.py ./
 

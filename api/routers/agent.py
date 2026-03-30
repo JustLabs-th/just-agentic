@@ -9,6 +9,10 @@ Architecture (Phase 1 — stateless):
   POST /api/agent/resume/{thread_id}
     → clear old stream, enqueue ARQ resume job
     → relay new events from Redis Stream
+
+  POST /api/agent/tool-result/{thread_id}   (local_exec mode only)
+    → CLI posts tool execution result here
+    → API pushes it to Redis so the blocked worker can unblock
 """
 
 import json
@@ -18,7 +22,7 @@ from typing import AsyncGenerator
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 
-from api.schemas import ChatRequest, ResumeRequest
+from api.schemas import ChatRequest, ResumeRequest, ToolResultRequest
 from api.deps import get_current_user
 from api.redis_client import get_arq_pool, get_relay_redis
 from security.jwt_auth import UserContext
@@ -26,7 +30,6 @@ from security.jwt_auth import UserContext
 router = APIRouter()
 
 # How long (ms) each XREAD call blocks waiting for new stream entries.
-# If no events arrive within this window the relay loops and tries again.
 _XREAD_BLOCK_MS = 30_000
 
 
@@ -42,9 +45,13 @@ async def _relay_stream(stream_key: str) -> AsyncGenerator[str, None]:
     """
     Read SSE events from a Redis Stream and yield them as SSE strings.
     Terminates when the worker publishes the `__done__` sentinel.
+
+    During local_exec mode the worker may pause for an extended period while
+    waiting for the client to execute a tool — the relay keeps polling as long
+    as the stream key exists, so it won't incorrectly close the connection.
     """
     redis = get_relay_redis()
-    last_id = "0"  # start from the beginning — handles worker starting before relay
+    last_id = "0"  # start from beginning — handles worker starting before relay
     try:
         while True:
             entries = await redis.xread(
@@ -53,11 +60,13 @@ async def _relay_stream(stream_key: str) -> AsyncGenerator[str, None]:
                 count=20,
             )
             if not entries:
-                # Timeout — check if the worker ever created the stream
+                # Timeout — check if the stream exists at all
                 if not await redis.exists(stream_key):
                     yield _sse("error", {"error": "Worker did not start — check worker logs"})
-                # Either way, nothing more to relay
-                return
+                    return
+                # Stream exists but worker is paused (e.g., waiting for a local
+                # tool result from the CLI client) — keep polling
+                continue
 
             for _, messages in entries:
                 for msg_id, fields in messages:
@@ -85,6 +94,7 @@ async def chat(
         message=request.message,
         history=request.history or [],
         image=request.image,
+        local_exec=request.local_exec,
         user_ctx={
             "user_id":    user.user_id,
             "role":       user.role,
@@ -137,3 +147,24 @@ async def resume(
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},
     )
+
+
+@router.post("/tool-result/{thread_id}")
+async def submit_tool_result(
+    thread_id: str,
+    body: ToolResultRequest,
+    user: UserContext = Depends(get_current_user),
+):
+    """
+    CLI client posts the result of a locally-executed tool here.
+    The worker is blocking on BLPOP tool_result:{call_id} — pushing to that
+    key unblocks it so the graph can continue.
+    """
+    redis = get_relay_redis()
+    try:
+        result_key = f"tool_result:{body.call_id}"
+        await redis.lpush(result_key, json.dumps({"output": body.output}))
+        await redis.expire(result_key, 300)
+    finally:
+        await redis.aclose()
+    return {"ok": True}

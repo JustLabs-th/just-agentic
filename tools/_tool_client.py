@@ -12,6 +12,8 @@ and the caller falls back to executing the subprocess locally.
 import os
 import requests
 
+from tools._local_exec import is_enabled as _local_exec_enabled, execute as _local_exec_execute
+
 _SERVICE_URL    = os.getenv("TOOL_SERVICE_URL", "").rstrip("/")
 _SERVICE_SECRET = os.getenv("TOOL_SERVICE_SECRET", "")
 
@@ -28,10 +30,16 @@ def call(tool_name: str, inputs: dict, workspace: str | None = None, timeout: in
     """
     Call the Tool Service to execute a tool.
 
-    Returns the output string on success.
-    Returns None if Tool Service is not configured (caller should fall back).
-    Raises RuntimeError on HTTP or connection errors.
+    Priority:
+      1. local_exec mode — delegate to CLI client via Redis round-trip
+      2. Tool Service (TOOL_SERVICE_URL set) — isolated container
+      3. None — caller falls back to local subprocess
+
+    Returns the output string on success, or None to signal fallback.
     """
+    if _local_exec_enabled():
+        return _local_exec_execute(tool_name, inputs, workspace or "", timeout)
+
     if not _SERVICE_URL:
         return None
 

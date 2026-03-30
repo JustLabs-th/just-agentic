@@ -1,3 +1,21 @@
+"""
+Supervisor Node
+
+Responsibilities:
+  - Ask the LLM which specialist agent should handle the current task
+    (or FINISH if done)
+  - Parse the LLM decision: agent name, intent, confidence score
+  - Detect infinite loops (same agent chosen 3× in a row → force FINISH)
+  - Bypass routing entirely when the user has exactly one allowed agent
+  - Respect MAX_ITERATIONS hard cap
+
+This is the ONLY LLM call in the security pipeline.
+All upstream nodes (rbac_guard → prompt_injection_guard) are deterministic.
+
+Routing decision format expected from LLM:
+  {"agent": "<name>", "intent": "<category>", "confidence": 0.0–1.0}
+"""
+
 import json
 import os
 from datetime import datetime, timezone

@@ -86,15 +86,17 @@ def login(body: LoginRequest):
             if not verify_password(body.password, user.hashed_password):
                 raise HTTPException(status_code=401, detail="Invalid credentials")
 
+            # read while session is still open
+            user_id_str = user.user_id
             role_name = user.role.name
             dept_name = user.department.name
 
         clearance = effective_clearance(role_name, dept_name)
         tools = list(effective_tools(role_name, dept_name))
-        token = make_dev_token(user.user_id, role_name, dept_name)
+        token = make_dev_token(user_id_str, role_name, dept_name)
         return LoginResponse(
             access_token=token,
-            user_id=user.user_id,
+            user_id=user_id_str,
             role=role_name,
             department=dept_name,
             clearance_level=clearance,

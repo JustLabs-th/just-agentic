@@ -36,7 +36,7 @@ python-multipart>=0.0.9     # form data support
 langchain-mcp-adapters>=0.1.0
 
 # Password hashing
-passlib[bcrypt]>=1.7
+bcrypt>=4.0
 
 # Redis + async worker queue (Phase 1 — Scalability)
 arq>=0.26
